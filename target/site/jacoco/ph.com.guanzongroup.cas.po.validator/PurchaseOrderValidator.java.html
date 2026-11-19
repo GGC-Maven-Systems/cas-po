@@ -1,0 +1,897 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.validator</a> &gt; <span class="el_source">PurchaseOrderValidator.java</span></div><h1>PurchaseOrderValidator.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.validator;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.guanzon.appdriver.agent.MatrixAuthManager;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.appdriver.iface.GValidator;
+import org.guanzon.cas.inv.InvTransCons;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONObject;
+import ph.com.guanzongroup.cas.po.utility.Results;
+import ph.com.guanzongroup.cas.po.controller.PurchaseOrderQueries;
+
+/**
+ * Base validator for Purchase Order. Holds every Purchase Order business rule.
+ *
+ * &lt;p&gt;
+ * The rules here are the General Inventory rules. Each industry validator
+ * (PurchaseOrder_MC, _MP, _SP, _Appliance) extends this class and adds its own
+ * rules through the protected hooks.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * How it is organized:&lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Status procedures&lt;/b&gt; ({@link #validate()}): fixed order of checks per
+ * status. A subclass cannot skip or reorder them.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Common rules&lt;/b&gt; ({@code commonXxxRules}, final): apply to every
+ * industry.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Industry rules&lt;/b&gt; ({@code industryXxxRules}): empty by default;
+ * override in the industry class.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Entry rules&lt;/b&gt; (public {@code validateXxx} methods): checks the
+ * controller calls while the user is editing (discounts, advance payment,
+ * duplicate items, source lines, ...). They return a result and never change
+ * the transaction; the controller decides what to reset.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Settings&lt;/b&gt; ({@code getXxx}/{@code isXxx}): override to tune a rule
+ * for one industry without rewriting it.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * Every result has a &quot;result&quot; key: &quot;success&quot; or &quot;error&quot; (with &quot;message&quot;).&lt;/p&gt;
+ */
+<span class="fc" id="L56">public abstract class PurchaseOrderValidator implements GValidator {</span>
+
+    protected static final String SOURCE_CD = InvTransCons.PURCHASE_ORDER;
+    protected static final String APPROVAL_MATRIX = &quot;PURCHASE ORDER MATRIX&quot;;
+<span class="fc" id="L60">    protected static final LocalDate NULL_DATE = LocalDate.of(1900, 1, 1);</span>
+<span class="fc" id="L61">    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);</span>
+
+    protected GRiderCAS poGrider;
+    protected String psTranStat;
+    protected Model_PO_Master poMaster;
+<span class="fc" id="L66">    protected final ArrayList&lt;Model_PO_Detail&gt; paDetail = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L67">    protected final ArrayList&lt;Model_PO_Detail&gt; paDetailRemoved = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L68">    protected final ArrayList&lt;Object&gt; paOthers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L69">    protected int pnActiveAttachments = 0;</span>
+    protected MatrixAuthManager poMatrix;
+
+    // =====================================================================
+    // Wiring (GValidator + context supplied by the controller)
+    // =====================================================================
+    @Override
+    public void setApplicationDriver(Object applicationDriver) {
+<span class="fc" id="L77">        poGrider = (GRiderCAS) applicationDriver;</span>
+<span class="fc" id="L78">    }</span>
+
+    @Override
+    public void setTransactionStatus(String transactionStatus) {
+<span class="fc" id="L82">        psTranStat = transactionStatus;</span>
+<span class="fc" id="L83">    }</span>
+
+    @Override
+    public void setMaster(Object value) {
+<span class="fc" id="L87">        poMaster = (Model_PO_Master) value;</span>
+<span class="fc" id="L88">    }</span>
+
+    @Override
+    public void setDetail(ArrayList&lt;Object&gt; value) {
+<span class="fc" id="L92">        copyDetails(value, paDetail);</span>
+<span class="fc" id="L93">    }</span>
+
+    @Override
+    public void setOthers(ArrayList&lt;Object&gt; value) {
+<span class="nc" id="L97">        paOthers.clear();</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (value != null) {</span>
+<span class="nc" id="L99">            paOthers.addAll(value);</span>
+        }
+<span class="nc" id="L101">    }</span>
+
+    /** Detail rows removed from the PO during editing. */
+    public void setRemovedDetail(ArrayList&lt;Object&gt; value) {
+<span class="nc" id="L105">        copyDetails(value, paDetailRemoved);</span>
+<span class="nc" id="L106">    }</span>
+
+    /** Number of attachments that were not removed. */
+    public void setActiveAttachmentCount(int count) {
+<span class="fc" id="L110">        pnActiveAttachments = count;</span>
+<span class="fc" id="L111">    }</span>
+
+    private static void copyDetails(List&lt;Object&gt; faSource, List&lt;Model_PO_Detail&gt; faTarget) {
+<span class="fc" id="L114">        faTarget.clear();</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (faSource == null) {</span>
+<span class="nc" id="L116">            return;</span>
+        }
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (Object loItem : faSource) {</span>
+<span class="fc" id="L119">            faTarget.add((Model_PO_Detail) loItem);</span>
+<span class="fc" id="L120">        }</span>
+<span class="fc" id="L121">    }</span>
+
+    // =====================================================================
+    // Status procedures (fixed for all industries)
+    // =====================================================================
+    /**
+     * Whether a PO in fsCurrent may move to fsNew (from cas-purchasing's
+     * StatusChangeValidator.validatePOStatChange, same rules and messages).
+     * A pending letter counts as its status ('A' = 1 ...). Only CONFIRMED,
+     * POSTED, CANCELLED and VOID are restricted here.
+     */
+    static JSONObject validateStatusChange(String fsCurrent, String fsNew) {
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        String lsCurrent = fsCurrent == null ? &quot;&quot; : fsCurrent.toUpperCase();</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        if (lsCurrent.length() == 1 &amp;&amp; &quot;ABCDEFGHIJ&quot;.contains(lsCurrent)) {</span>
+<span class="fc" id="L135">            lsCurrent = String.valueOf(lsCurrent.charAt(0) - 64);</span>
+        }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (fsNew.equalsIgnoreCase(lsCurrent)) {</span>
+<span class="pc bpc" id="L138" title="3 of 5 branches missed.">            switch (fsNew) {</span>
+                case PurchaseOrderStatus.CONFIRMED:
+<span class="fc" id="L140">                    return error(&quot;Transaction was already confirmed.&quot;);</span>
+                case PurchaseOrderStatus.POSTED:
+<span class="nc" id="L142">                    return error(&quot;Transaction was already posted.&quot;);</span>
+                case PurchaseOrderStatus.CANCELLED:
+<span class="fc" id="L144">                    return error(&quot;Transaction was already CANCELLED.&quot;);</span>
+                case PurchaseOrderStatus.VOID:
+<span class="nc" id="L146">                    return error(&quot;Transaction was already tagged VOID.&quot;);</span>
+                default:
+<span class="nc" id="L148">                    return success();</span>
+            }
+        }
+<span class="fc bfc" id="L151" title="All 5 branches covered.">        switch (fsNew) {</span>
+            case PurchaseOrderStatus.CONFIRMED:
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                return isAnyOf(lsCurrent, PurchaseOrderStatus.OPEN, PurchaseOrderStatus.RETURNED)</span>
+<span class="fc" id="L154">                        ? success()</span>
+<span class="fc" id="L155">                        : error(&quot;Transaction confirmation failed! Please check transaction status.&quot;);</span>
+            case PurchaseOrderStatus.POSTED:
+                //only a confirmed PO can be posted
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                return isAnyOf(lsCurrent, PurchaseOrderStatus.CONFIRMED)</span>
+<span class="fc" id="L159">                        ? success()</span>
+<span class="fc" id="L160">                        : error(&quot;Transaction posting failed! Please check transaction status.&quot;);</span>
+            case PurchaseOrderStatus.CANCELLED:
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                return isAnyOf(lsCurrent, PurchaseOrderStatus.CONFIRMED, PurchaseOrderStatus.RETURNED)</span>
+<span class="fc" id="L163">                        ? success()</span>
+<span class="fc" id="L164">                        : error(&quot;Transaction CANCELLATION failed! Please check transaction status.&quot;);</span>
+            case PurchaseOrderStatus.VOID:
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                return isAnyOf(lsCurrent, PurchaseOrderStatus.OPEN, PurchaseOrderStatus.RETURNED)</span>
+<span class="fc" id="L167">                        ? success()</span>
+<span class="fc" id="L168">                        : error(&quot;Transaction tagging to VOID failed! Please check transaction status.&quot;);</span>
+            default:
+<span class="fc" id="L170">                return success();</span>
+        }
+    }
+
+    private static boolean isAnyOf(String fsValue, String... faAllowed) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (String lsAllowed : faAllowed) {</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (lsAllowed.equalsIgnoreCase(fsValue)) {</span>
+<span class="fc" id="L177">                return true;</span>
+            }
+        }
+<span class="fc" id="L180">        return false;</span>
+    }
+
+    @Override
+    public final JSONObject validate() {
+<span class="pc bpc" id="L185" title="5 of 6 branches missed.">        if (poGrider == null || poMaster == null || psTranStat == null) {</span>
+<span class="fc" id="L186">            return error(&quot;Validator is not initialized.&quot;);</span>
+        }
+
+        //validate status change request
+<span class="nc" id="L190">        JSONObject loJSON = validateStatusChange(poMaster.getTransactionStatus(), psTranStat);</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L192">            return loJSON;</span>
+        }
+
+        try {
+<span class="nc bnc" id="L196" title="All 8 branches missed.">            switch (psTranStat) {</span>
+                case PurchaseOrderStatus.OPEN:
+<span class="nc" id="L198">                    return runRules(this::commonNewRules, this::industryNewRules);</span>
+                case PurchaseOrderStatus.CONFIRMED:
+<span class="nc" id="L200">                    return runRules(this::commonConfirmedRules, this::industryConfirmedRules);</span>
+                case PurchaseOrderStatus.APPROVED:
+<span class="nc" id="L202">                    return validateApproved();</span>
+                case PurchaseOrderStatus.POSTED:
+<span class="nc" id="L204">                    return runRules(this::commonPostedRules, this::industryPostedRules);</span>
+                case PurchaseOrderStatus.CANCELLED:
+<span class="nc" id="L206">                    return runRules(this::commonCancelledRules, this::industryCancelledRules);</span>
+                case PurchaseOrderStatus.VOID:
+<span class="nc" id="L208">                    return runRules(this::commonVoidRules, this::industryVoidRules);</span>
+                case PurchaseOrderStatus.RETURNED:
+<span class="nc" id="L210">                    return runRules(this::commonReturnedRules, this::industryReturnedRules);</span>
+                default:
+<span class="nc" id="L212">                    return success();</span>
+            }
+<span class="nc" id="L214">        } catch (SQLException | GuanzonException ex) {</span>
+<span class="nc" id="L215">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, null, ex);</span>
+            //never return null: the controller reads the &quot;result&quot; key
+<span class="nc" id="L217">            return error(ex.getMessage());</span>
+        }
+    }
+
+    /** One group of rules. */
+    @FunctionalInterface
+    protected interface RuleStep {
+        JSONObject run() throws SQLException, GuanzonException;
+    }
+
+    /** Common rules first; industry rules run only when the common rules pass. */
+    private JSONObject runRules(RuleStep foCommon, RuleStep foIndustry) throws SQLException, GuanzonException {
+<span class="nc" id="L229">        JSONObject loJSON = foCommon.run();</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L231">            return loJSON;</span>
+        }
+<span class="nc" id="L233">        loJSON = foIndustry.run();</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        return loJSON != null ? loJSON : success();</span>
+    }
+
+    /**
+     * Approval: common + industry rules first, then build the authorization
+     * matrix request (if any) and let the matrix manager process it.
+     */
+    private JSONObject validateApproved() throws SQLException, GuanzonException {
+<span class="nc" id="L242">        JSONObject loJSON = commonApprovedRules();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L244">            return loJSON;</span>
+        }
+<span class="nc" id="L246">        loJSON = industryApprovedRules();</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L248">            return loJSON;</span>
+        }
+
+<span class="nc" id="L251">        poMatrix = new MatrixAuthManager(poGrider, SOURCE_CD, poMaster.getTransactionNo());</span>
+
+<span class="nc" id="L253">        QuotationVariance loVariance = loadQuotationVariance();</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        if (isApprovalAuthRequired(loVariance)) {</span>
+<span class="nc" id="L255">            String lsAuthCode = poMatrix.getAuthType(getApprovalMatrixName(), poMaster.getTranTotal().toString(), &quot;&quot;);</span>
+<span class="nc" id="L256">            poMatrix.addAuthRequest(lsAuthCode, &quot;&quot;, &quot;&quot;, buildAuthRemarks());</span>
+        }
+
+        //industry may add its own authorization requests
+<span class="nc" id="L260">        addIndustryAuthRequests(poMatrix, loVariance);</span>
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (!poMatrix.hasAuthRequest()) {</span>
+<span class="nc" id="L263">            return success();</span>
+        }
+
+<span class="nc" id="L266">        loJSON = poMatrix.processAuth();</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        return loJSON != null ? loJSON : error(&quot;Unable to process authorization request.&quot;);</span>
+    }
+
+    // =====================================================================
+    // Common status rules (General Inventory) - apply to every industry
+    // =====================================================================
+    protected final JSONObject commonNewRules() throws SQLException {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        if (isEmpty(poMaster.getSupplierID())) {</span>
+<span class="fc" id="L275">            return error(&quot;Invalid Supplier.&quot;);</span>
+        }
+
+<span class="fc" id="L278">        LocalDate ldTransact = toLocalDate(poMaster.getTransactionDate());</span>
+<span class="pc bpc" id="L279" title="1 of 4 branches missed.">        if (ldTransact == null || NULL_DATE.equals(ldTransact)) {</span>
+<span class="fc" id="L280">            return error(&quot;Invalid Transaction Date.&quot;);</span>
+        }
+
+<span class="fc" id="L283">        LocalDate ldServer = toLocalDate(poGrider.getServerDate());</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (ldTransact.isAfter(ldServer)) {</span>
+<span class="fc" id="L285">            return error(&quot;Future transaction dates are not allowed.&quot;);</span>
+        }
+
+<span class="fc" id="L288">        int lnMaxYears = getMaxBackdateYears();</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (ldTransact.isBefore(ldServer.minusYears(lnMaxYears))) {</span>
+<span class="fc" id="L290">            return error(&quot;Backdated transactions beyond &quot; + lnMaxYears + &quot; year(s) are not allowed.&quot;);</span>
+        }
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (isEmpty(poMaster.getDestinationID())) {</span>
+<span class="fc" id="L294">            return error(&quot;Destination is not set.&quot;);</span>
+        }
+
+<span class="fc" id="L297">        LocalDate ldExpected = toLocalDate(poMaster.getExpectedDate());</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (ldExpected == null) {</span>
+<span class="fc" id="L299">            return error(&quot;Invalid Expected Delivery Date.&quot;);</span>
+        }
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">        if (NULL_DATE.equals(ldExpected)) {</span>
+<span class="nc" id="L302">            return error(&quot;Invalid Expected Delivery Transaction Date.&quot;);</span>
+        }
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (ldExpected.isBefore(ldTransact)) {</span>
+<span class="fc" id="L305">            return error(&quot;The expected date cannot be earlier than the transaction date.&quot;);</span>
+        }
+
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (isEmpty(poMaster.getTermCode())) {</span>
+<span class="fc" id="L309">            return error(&quot;Invalid Term.&quot;);</span>
+        }
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (poMaster.getEditMode() == EditMode.ADDNEW</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">                &amp;&amp; isReferenceRequiredForBackdate()</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">                &amp;&amp; ldTransact.isBefore(ldServer)</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                &amp;&amp; isEmpty(poMaster.getReference())) {</span>
+<span class="fc" id="L316">            return error(&quot;A reference number is required for backdated transactions.&quot;);</span>
+        }
+
+<span class="fc" id="L319">        return success();</span>
+    }
+
+    protected final JSONObject commonConfirmedRules() throws SQLException {
+        //above the limit, confirmation requires at least one attachment
+<span class="fc bfc" id="L324" title="All 4 branches covered.">        if (money(poMaster.getTranTotal()).compareTo(money(getAttachmentRequiredAmount())) &gt; 0 &amp;&amp; pnActiveAttachments &lt;= 0) {</span>
+<span class="fc" id="L325">            return error(&quot;Transaction attachment cannot be empty.&quot;);</span>
+        }
+<span class="fc" id="L327">        return success();</span>
+    }
+
+    /** Add rules here that every industry must pass before approval. */
+    protected final JSONObject commonApprovedRules() throws SQLException {
+<span class="nc" id="L332">        return success();</span>
+    }
+
+    protected final JSONObject commonPostedRules() throws SQLException {
+<span class="nc" id="L336">        return success();</span>
+    }
+
+    protected final JSONObject commonCancelledRules() throws SQLException {
+<span class="nc" id="L340">        return success();</span>
+    }
+
+    protected final JSONObject commonVoidRules() throws SQLException {
+<span class="nc" id="L344">        return success();</span>
+    }
+
+    protected final JSONObject commonReturnedRules() throws SQLException {
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (PurchaseOrderStatus.RETURNED.equals(poMaster.getTransactionStatus())) {</span>
+<span class="fc" id="L349">            return error(&quot;Transaction was already returned.&quot;);</span>
+        }
+<span class="fc" id="L351">        return success();</span>
+    }
+
+    // =====================================================================
+    // Industry status rules (override in the industry class)
+    // =====================================================================
+    protected JSONObject industryNewRules() throws SQLException, GuanzonException {
+<span class="nc" id="L358">        return success();</span>
+    }
+
+    protected JSONObject industryConfirmedRules() throws SQLException, GuanzonException {
+<span class="nc" id="L362">        return success();</span>
+    }
+
+    protected JSONObject industryApprovedRules() throws SQLException, GuanzonException {
+<span class="nc" id="L366">        return success();</span>
+    }
+
+    protected JSONObject industryPostedRules() throws SQLException, GuanzonException {
+<span class="nc" id="L370">        return success();</span>
+    }
+
+    protected JSONObject industryCancelledRules() throws SQLException, GuanzonException {
+<span class="nc" id="L374">        return success();</span>
+    }
+
+    protected JSONObject industryVoidRules() throws SQLException, GuanzonException {
+<span class="nc" id="L378">        return success();</span>
+    }
+
+    protected JSONObject industryReturnedRules() throws SQLException, GuanzonException {
+<span class="nc" id="L382">        return success();</span>
+    }
+
+    /**
+     * Extra authorization requests for approval (e.g. a separate matrix for an
+     * industry). Default: none.
+     */
+    protected void addIndustryAuthRequests(MatrixAuthManager foMatrix, QuotationVariance foVariance)
+            throws SQLException, GuanzonException {
+<span class="nc" id="L391">    }</span>
+
+    // =====================================================================
+    // Entry rules: source lines (stock request / PO quotation)
+    // =====================================================================
+    /**
+     * Checks every detail line against its source document for the status set
+     * with setTransactionStatus(). Called by the controller before it updates
+     * the stock requests and quotations.
+     */
+    public JSONObject validateSourceLines() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc bnc" id="L402" title="All 2 branches missed.">        for (Model_PO_Detail loDetail : paDetail) {</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">            if (isEmpty(loDetail.getSouceNo())) {</span>
+<span class="nc" id="L404">                continue;</span>
+            }
+
+            JSONObject loJSON;
+<span class="nc bnc" id="L408" title="All 2 branches missed.">            if (PurchaseOrderStatus.SourceCode.STOCKREQUEST.equals(loDetail.getSouceCode())) {</span>
+<span class="nc" id="L409">                loJSON = validateStockRequestLine(loDetail);</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            } else if (PurchaseOrderStatus.SourceCode.POQUOTATION.equals(loDetail.getSouceCode())) {</span>
+<span class="nc" id="L411">                loJSON = validateQuotationNotOrdered(loDetail.getSouceNo());</span>
+            } else {
+<span class="nc" id="L413">                loJSON = success();</span>
+            }
+
+<span class="nc bnc" id="L416" title="All 2 branches missed.">            if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L417">                return loJSON;</span>
+            }
+<span class="nc" id="L419">        }</span>
+
+        //industry may add more source-line checks
+<span class="nc" id="L422">        JSONObject loJSON = industrySourceLineRules();</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        return loJSON != null ? loJSON : success();</span>
+    }
+
+    /** Industry source-line checks. Default: none. */
+    protected JSONObject industrySourceLineRules() throws SQLException, GuanzonException {
+<span class="nc" id="L428">        return success();</span>
+    }
+
+    protected JSONObject validateStockRequestLine(Model_PO_Detail foDetail)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L433">        double lnApproved = foDetail.InvStockRequestDetail().getApproved();</span>
+
+        //remaining = nApproved - (nCancelld + nIssueQty + quantity ordered by OTHER POs).
+        //This PO's own order is left out: once confirmed it is already in the
+        //request's ordered quantity, and must not block its own approval or edit.
+<span class="fc bfc" id="L438" title="All 2 branches covered.">        if (PurchaseOrderStatus.CONFIRMED.equals(psTranStat)</span>
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">                || PurchaseOrderStatus.APPROVED.equals(psTranStat)) {</span>
+<span class="fc" id="L440">            double lnRemaining = lnApproved</span>
+<span class="fc" id="L441">                    - (foDetail.InvStockRequestDetail().getCancelled()</span>
+<span class="fc" id="L442">                    + foDetail.InvStockRequestDetail().getIssued()</span>
+<span class="fc" id="L443">                    + getOrderedByOtherPOs(foDetail));</span>
+<span class="fc bfc" id="L444" title="All 2 branches covered.">            if (lnRemaining &lt;= 0.00) {</span>
+<span class="fc" id="L445">                return error(&quot;Discrepancy: Stock requests related to this order number have already been processed.&quot;);</span>
+            }
+        }
+
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        if (num(foDetail.getQuantity()) &gt; lnApproved) {</span>
+<span class="fc" id="L450">            return error(&quot;Discrepancy: Order Quantity cannot greater than request quantity, please enter valid order quantity.&quot;);</span>
+        }
+
+<span class="pc bpc" id="L453" title="3 of 4 branches missed.">        if (PurchaseOrderStatus.RETURNED.equals(poMaster.getTransactionStatus()) &amp;&amp; lnApproved == 0) {</span>
+<span class="nc" id="L454">            return error(&quot;All stock requests related to this order number have already been processed.&quot;);</span>
+        }
+
+<span class="fc" id="L457">        return success();</span>
+    }
+
+    /**
+     * Quantity of this stock request item ordered by other confirmed/approved
+     * Purchase Orders (this PO excluded).
+     */
+    protected double getOrderedByOtherPOs(Model_PO_Detail foDetail) throws SQLException {
+<span class="fc" id="L465">        String lsSQL = PurchaseOrderQueries.orderedQuantity(foDetail.getSouceNo(), foDetail.getStockID(),</span>
+<span class="fc" id="L466">                PurchaseOrderStatus.SourceCode.STOCKREQUEST, poMaster.getTransactionNo());</span>
+<span class="fc" id="L467">        ResultSet loRS = poGrider.executeQuery(lsSQL);</span>
+<span class="pc bpc" id="L468" title="1 of 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L469">            throw new SQLException(&quot;Unable to check the ordered quantity of the stock request.&quot;);</span>
+        }
+        try {
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">            return loRS.next() ? loRS.getDouble(&quot;nQuantity&quot;) : 0.00;</span>
+        } finally {
+<span class="fc" id="L474">            loRS.close();</span>
+        }
+    }
+
+    /**
+     * A PO Quotation may feed only one confirmed/approved Purchase Order.
+     * Returns success when no other PO uses the quotation.
+     */
+    public JSONObject validateQuotationNotOrdered(String fsQuotationNo) throws SQLException {
+<span class="nc" id="L483">        String lsSQL = &quot;SELECT b.sSourceNo&quot;</span>
+                + &quot; FROM PO_Master a&quot;
+                + &quot; LEFT JOIN PO_Detail b ON a.sTransNox = b.sTransNox&quot;
+<span class="nc" id="L486">                + &quot; WHERE b.sSourceNo = &quot; + SQLUtil.toSQL(fsQuotationNo)</span>
+<span class="nc" id="L487">                + &quot; AND b.sSourceCd = &quot; + SQLUtil.toSQL(PurchaseOrderStatus.SourceCode.POQUOTATION)</span>
+<span class="nc" id="L488">                + &quot; AND ( a.cTranStat = &quot; + SQLUtil.toSQL(PurchaseOrderStatus.CONFIRMED)</span>
+<span class="nc" id="L489">                + &quot;     OR a.cTranStat = &quot; + SQLUtil.toSQL(PurchaseOrderStatus.APPROVED) + &quot; )&quot;</span>
+<span class="nc" id="L490">                + &quot; AND a.sTransNox &lt;&gt; &quot; + SQLUtil.toSQL(poMaster.getTransactionNo())</span>
+                + &quot; LIMIT 1&quot;;
+
+<span class="nc bnc" id="L493" title="All 2 branches missed.">        if (hasRow(lsSQL)) {</span>
+<span class="nc" id="L494">            return error(&quot;Selected PO Quotation already have an existing Purchase Order.&quot;);</span>
+        }
+<span class="nc" id="L496">        JSONObject loJSON = success();</span>
+<span class="nc" id="L497">        loJSON.put(&quot;message&quot;, &quot;No Record Found.&quot;);</span>
+<span class="nc" id="L498">        return loJSON;</span>
+    }
+
+    // =====================================================================
+    // Entry rules: detail grid
+    // =====================================================================
+    /** A new row may be added only when the last row has an item. */
+    public JSONObject validateCanAddDetail() {
+<span class="fc bfc" id="L506" title="All 4 branches covered.">        if (!paDetail.isEmpty() &amp;&amp; isEmpty(paDetail.get(paDetail.size() - 1).getStockID())) {</span>
+<span class="fc" id="L507">            return error(&quot;Last row has empty item.&quot;);</span>
+        }
+<span class="fc" id="L509">        return success();</span>
+    }
+
+    /**
+     * The same item may appear only once among lines that were not pulled
+     * from a source document.
+     *
+     * @param fnRow row being edited (skipped)
+     * @param fsStockId item being placed on the row
+     * @param fsItemLabel text shown in the message, e.g. &quot;Barcode: XYZ&quot;
+     */
+    public JSONObject validateUniqueItem(int fnRow, String fsStockId, String fsItemLabel) {
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        for (int lnRow = 0; lnRow &lt; paDetail.size(); lnRow++) {</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">            if (lnRow == fnRow) {</span>
+<span class="fc" id="L523">                continue;</span>
+            }
+<span class="fc" id="L525">            Model_PO_Detail loDetail = paDetail.get(lnRow);</span>
+<span class="fc bfc" id="L526" title="All 4 branches covered.">            if (isEmpty(loDetail.getSouceNo()) &amp;&amp; Objects.equals(fsStockId, loDetail.getStockID())) {</span>
+<span class="fc" id="L527">                JSONObject loJSON = error(fsItemLabel + &quot; already exist in table at row &quot; + (lnRow + 1) + &quot;.&quot;);</span>
+<span class="fc" id="L528">                loJSON.put(&quot;tableRow&quot;, lnRow);</span>
+<span class="fc" id="L529">                return loJSON;</span>
+            }
+        }
+<span class="fc" id="L532">        return success();</span>
+    }
+
+    /**
+     * Quantity check over the item lines. Same result shape as the old
+     * isDetailHasZeroQty(): &quot;tableRow&quot; and, on error, &quot;warning&quot; (&quot;true&quot; when
+     * every line is zero).
+     */
+    public JSONObject validateQuantities() {
+<span class="fc" id="L541">        int lnZeroRow = -1;</span>
+<span class="fc" id="L542">        boolean lbHasNonZero = false;</span>
+<span class="fc" id="L543">        boolean lbHasZero = false;</span>
+<span class="fc" id="L544">        int lnLastRow = paDetail.size() - 1;</span>
+
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        for (int lnRow = 0; lnRow &lt;= lnLastRow; lnRow++) {</span>
+<span class="fc" id="L547">            Model_PO_Detail loDetail = paDetail.get(lnRow);</span>
+<span class="fc bfc" id="L548" title="All 2 branches covered.">            if (isEmpty(loDetail.getStockID())) {</span>
+<span class="fc" id="L549">                continue;</span>
+            }
+<span class="fc bfc" id="L551" title="All 2 branches covered.">            if (num(loDetail.getQuantity()) == 0.00) {</span>
+<span class="fc" id="L552">                lbHasZero = true;</span>
+<span class="fc bfc" id="L553" title="All 2 branches covered.">                if (lnZeroRow == -1) {</span>
+<span class="fc" id="L554">                    lnZeroRow = lnRow;</span>
+                }
+            } else {
+<span class="fc" id="L557">                lbHasNonZero = true;</span>
+            }
+        }
+
+        JSONObject loJSON;
+<span class="pc bpc" id="L562" title="1 of 4 branches missed.">        if (!lbHasNonZero &amp;&amp; lbHasZero) {</span>
+<span class="fc" id="L563">            loJSON = error(&quot;All items have zero quantity. Please enter a valid quantity.&quot;);</span>
+<span class="fc" id="L564">            loJSON.put(&quot;tableRow&quot;, lnZeroRow);</span>
+<span class="fc" id="L565">            loJSON.put(&quot;warning&quot;, &quot;true&quot;);</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">        } else if (lbHasZero) {</span>
+<span class="fc" id="L567">            loJSON = error(&quot;Some items have zero quantity. Please review.&quot;);</span>
+<span class="fc" id="L568">            loJSON.put(&quot;tableRow&quot;, lnZeroRow);</span>
+<span class="fc" id="L569">            loJSON.put(&quot;warning&quot;, &quot;false&quot;);</span>
+        } else {
+<span class="fc" id="L571">            loJSON = success();</span>
+<span class="fc" id="L572">            loJSON.put(&quot;message&quot;, &quot;All items have valid quantities.&quot;);</span>
+<span class="fc" id="L573">            loJSON.put(&quot;tableRow&quot;, lnLastRow);</span>
+        }
+<span class="fc" id="L575">        return loJSON;</span>
+    }
+
+    /** Adding fnLineAmount to the current net total must stay below the cap. */
+    public JSONObject validateNetTotalWithLine(double fnLineAmount) {
+<span class="fc" id="L580">        BigDecimal ldNetTotal = money(poMaster.getNetTotal()).add(money(fnLineAmount));</span>
+<span class="fc bfc" id="L581" title="All 2 branches covered.">        if (ldNetTotal.compareTo(money(getMaxNetTotal())) &gt;= 0) {</span>
+<span class="fc" id="L582">            return error(&quot;The net total exceeds the maximum allowed amount. Please reduce the value and try again.&quot;);</span>
+        }
+<span class="fc" id="L584">        return success();</span>
+    }
+
+    // =====================================================================
+    // Entry rules: discounts and advance payment (money in BigDecimal)
+    // =====================================================================
+    public JSONObject validateDiscountRate(double fnRate) {
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (money(poMaster.getTranTotal()).signum() == 0) {</span>
+<span class="fc" id="L592">            return error(&quot;You're not allowed to enter discount rate, no detail amount entered.&quot;);</span>
+        }
+<span class="fc bfc" id="L594" title="All 4 branches covered.">        if (fnRate &lt; 0.0000 || fnRate &gt; 100.0000) {</span>
+<span class="fc" id="L595">            return error(&quot;Invalid Discount Rate.  Must be between 0.00 and 100.00&quot;);</span>
+        }
+<span class="fc" id="L597">        return success();</span>
+    }
+
+    public JSONObject validateDiscountAmount(double fnAmount) {
+<span class="fc" id="L601">        BigDecimal ldAmount = money(fnAmount);</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">        if (ldAmount.compareTo(money(getMaxDiscountAmount())) &gt;= 0) {</span>
+<span class="fc" id="L603">            return error(&quot;Discount amount must not exceed &quot; + String.format(&quot;%,.2f&quot;, getMaxDiscountAmount()) + &quot;.&quot;);</span>
+        }
+<span class="fc" id="L605">        BigDecimal ldTotal = money(poMaster.getTranTotal());</span>
+<span class="fc" id="L606">        BigDecimal ldAfterRate = ldTotal.subtract(percentOf(ldTotal, money(poMaster.getDiscount())));</span>
+<span class="fc bfc" id="L607" title="All 2 branches covered.">        if (ldAfterRate.signum() == 0) {</span>
+<span class="fc" id="L608">            return error(&quot;You're not allowed to enter discount amount, no amount entered.&quot;);</span>
+        }
+<span class="fc bfc" id="L610" title="All 4 branches covered.">        if (ldAmount.signum() &lt; 0 || ldAmount.compareTo(ldAfterRate) &gt; 0) {</span>
+<span class="fc" id="L611">            return error(&quot;Invalid Discount Amount&quot;);</span>
+        }
+<span class="fc" id="L613">        return success();</span>
+    }
+
+    /** Net total after a discount change must not be negative. */
+    public JSONObject validateNetTotal() {
+<span class="fc bfc" id="L618" title="All 2 branches covered.">        if (money(poMaster.getNetTotal()).signum() &lt; 0) {</span>
+<span class="fc" id="L619">            return error(&quot;Invalid Total Transaction Amount&quot;);</span>
+        }
+<span class="fc" id="L621">        return success();</span>
+    }
+
+    /** Transaction total less discount rate and discount amount. */
+    protected BigDecimal getAmountAfterDiscounts() {
+<span class="fc" id="L626">        BigDecimal ldTotal = money(poMaster.getTranTotal());</span>
+<span class="fc" id="L627">        return ldTotal.subtract(percentOf(ldTotal, money(poMaster.getDiscount())))</span>
+<span class="fc" id="L628">                .subtract(money(poMaster.getAdditionalDiscount()));</span>
+    }
+
+    // =====================================================================
+    // Entry rules: returned PO edit
+    // =====================================================================
+    /**
+     * Saving a RETURNED PO requires at least one change compared with the
+     * saved record.
+     */
+    public JSONObject validateReturnedEdit(Model_PO_Master foSaved, List&lt;Model_PO_Detail&gt; faSavedDetail) {
+<span class="fc" id="L639">        List&lt;SavedLine&gt; laLines = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L640" title="All 2 branches covered.">        for (Model_PO_Detail loDetail : faSavedDetail) {</span>
+<span class="fc" id="L641">            laLines.add(new SavedLine(loDetail.getStockID(), num(loDetail.getQuantity())));</span>
+<span class="fc" id="L642">        }</span>
+<span class="fc" id="L643">        return validateReturnedEditLines(foSaved, laLines);</span>
+    }
+
+    /** Same check, with the saved lines read straight from the database. */
+    public JSONObject validateReturnedEditLines(Model_PO_Master foSaved, List&lt;SavedLine&gt; faSavedLines) {
+<span class="fc bfc" id="L648" title="All 2 branches covered.">        boolean lbSame = faSavedLines.size() == paDetail.size()</span>
+<span class="pc bpc" id="L649" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(foSaved.getTransactionDate(), poMaster.getTransactionDate())</span>
+<span class="pc bpc" id="L650" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(foSaved.getSupplierID(), poMaster.getSupplierID())</span>
+<span class="pc bpc" id="L651" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(foSaved.getDestinationID(), poMaster.getDestinationID())</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">                &amp;&amp; Objects.equals(foSaved.getTermCode(), poMaster.getTermCode())</span>
+<span class="pc bpc" id="L653" title="1 of 2 branches missed.">                &amp;&amp; sameMoney(foSaved.getDiscount(), poMaster.getDiscount())</span>
+<span class="pc bpc" id="L654" title="1 of 2 branches missed.">                &amp;&amp; sameMoney(foSaved.getAdditionalDiscount(), poMaster.getAdditionalDiscount())</span>
+<span class="pc bpc" id="L655" title="1 of 2 branches missed.">                &amp;&amp; sameMoney(foSaved.getTranTotal(), poMaster.getTranTotal())</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">                &amp;&amp; Objects.equals(foSaved.getRemarks(), poMaster.getRemarks());</span>
+
+<span class="pc bpc" id="L658" title="1 of 4 branches missed.">        if (lbSame &amp;&amp; foSaved.getWithAdvPaym()) {</span>
+<span class="nc bnc" id="L659" title="All 2 branches missed.">            lbSame = sameMoney(foSaved.getDownPaymentRatesPercentage(), poMaster.getDownPaymentRatesPercentage())</span>
+<span class="nc bnc" id="L660" title="All 2 branches missed.">                    &amp;&amp; sameMoney(foSaved.getDownPaymentRatesAmount(), poMaster.getDownPaymentRatesAmount());</span>
+        }
+
+<span class="fc bfc" id="L663" title="All 4 branches covered.">        for (int lnRow = 0; lbSame &amp;&amp; lnRow &lt; faSavedLines.size(); lnRow++) {</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">            lbSame = Objects.equals(faSavedLines.get(lnRow).getStockId(), paDetail.get(lnRow).getStockID())</span>
+<span class="fc bfc" id="L665" title="All 2 branches covered.">                    &amp;&amp; faSavedLines.get(lnRow).getQuantity() == num(paDetail.get(lnRow).getQuantity());</span>
+        }
+
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        return lbSame ? error(&quot;No update has been made.&quot;) : success();</span>
+    }
+
+    /** A saved detail line (item and quantity), in entry order. */
+    public static final class SavedLine {
+
+        private final String psStockId;
+        private final double pnQuantity;
+
+<span class="fc" id="L677">        public SavedLine(String fsStockId, double fnQuantity) {</span>
+<span class="fc" id="L678">            psStockId = fsStockId;</span>
+<span class="fc" id="L679">            pnQuantity = fnQuantity;</span>
+<span class="fc" id="L680">        }</span>
+
+        public String getStockId() {
+<span class="fc" id="L683">            return psStockId;</span>
+        }
+
+        public double getQuantity() {
+<span class="fc" id="L687">            return pnQuantity;</span>
+        }
+    }
+
+    // =====================================================================
+    // Settings (override to tune a rule for one industry)
+    // =====================================================================
+    /** How far back a transaction date may go. */
+    protected int getMaxBackdateYears() {
+<span class="fc" id="L696">        return 1;</span>
+    }
+
+    /** Whether a new backdated PO must carry a reference number. */
+    protected boolean isReferenceRequiredForBackdate() {
+<span class="fc" id="L701">        return true;</span>
+    }
+
+    /** Above this total, confirmation requires at least one attachment. */
+    protected double getAttachmentRequiredAmount() {
+<span class="fc" id="L706">        return 100000.0000;</span>
+    }
+
+    /** Discount amount must be below this. */
+    protected double getMaxDiscountAmount() {
+<span class="fc" id="L711">        return 1000000.0000;</span>
+    }
+
+    /** Net total must be below this. */
+    protected double getMaxNetTotal() {
+<span class="fc" id="L716">        return 100000000.0000;</span>
+    }
+
+    /** Allowed absolute % difference between PO and quotation quantity. */
+    protected double getQuantityTolerancePct() {
+<span class="fc" id="L721">        return 0.0000;</span>
+    }
+
+    /** Allowed absolute % difference between PO and quotation unit price. */
+    protected double getPriceTolerancePct() {
+<span class="fc" id="L726">        return 0.0000;</span>
+    }
+
+    /** Matrix name used to look up the authorization type. */
+    protected String getApprovalMatrixName() {
+<span class="nc" id="L731">        return APPROVAL_MATRIX;</span>
+    }
+
+    /**
+     * Default rule: authorization is required when any line has no matching
+     * quotation line, or when quantity or price differs from the quotation by
+     * more than the tolerance.
+     */
+    protected boolean isApprovalAuthRequired(QuotationVariance foVariance) {
+<span class="fc bfc" id="L740" title="All 2 branches covered.">        if (!foVariance.isFullyQuoted()) {</span>
+<span class="fc" id="L741">            return true;</span>
+        }
+<span class="fc bfc" id="L743" title="All 2 branches covered.">        return foVariance.nMaxQtyDiffPct &gt; getQuantityTolerancePct()</span>
+<span class="fc bfc" id="L744" title="All 2 branches covered.">                || foVariance.nMaxPriceDiffPct &gt; getPriceTolerancePct();</span>
+    }
+
+    /** Remarks attached to the authorization request. */
+    protected String buildAuthRemarks() {
+<span class="nc" id="L749">        return poMaster.getBranchCode()</span>
+<span class="nc" id="L750">                + &quot;/&quot; + poMaster.getTransactionNo()</span>
+<span class="nc" id="L751">                + &quot;;&quot; + SQLUtil.dateFormat(poMaster.getTransactionDate(), &quot;yyyy-MM-dd&quot;)</span>
+<span class="nc" id="L752">                + &quot;;&quot; + poMaster.getTranTotal().toString()</span>
+<span class="nc" id="L753">                + &quot;;&quot; + Objects.toString(poMaster.getRemarks(), &quot;&quot;);</span>
+    }
+
+    // =====================================================================
+    // PO vs quotation comparison
+    // =====================================================================
+    /** Summary of how the PO lines differ from their source quotation. */
+<span class="fc" id="L760">    protected static class QuotationVariance {</span>
+
+        /** Number of PO lines checked. */
+        public int nRecords;
+        /** Lines with no matching quotation line. */
+        public int nUnquoted;
+        /** Largest absolute % quantity difference among quoted lines. */
+        public double nMaxQtyDiffPct;
+        /** Largest absolute % unit price difference among quoted lines. */
+        public double nMaxPriceDiffPct;
+        /** % difference between quotation total and PO total (first quoted line). */
+        public double nTotalDiffPct;
+
+        public boolean isFullyQuoted() {
+<span class="fc bfc" id="L774" title="All 4 branches covered.">            return nRecords &gt; 0 &amp;&amp; nUnquoted == 0;</span>
+        }
+    }
+
+    protected final QuotationVariance loadQuotationVariance() throws SQLException {
+<span class="nc" id="L779">        String lsSQL = &quot;SELECT&quot;</span>
+                + &quot;  c.sStockIDx&quot;
+                + &quot;, d.sTransNox sQuoteNox&quot;
+                + &quot;, ((IFNULL(b.nTranTotl, 0) - IFNULL(a.nTranTotl, 0)) / NULLIF(b.nTranTotl, 0) * 100) AS nTotlDiff&quot;
+                + &quot;, ((IFNULL(d.nQuantity, 0) - IFNULL(c.nQuantity, 0)) / NULLIF(d.nQuantity, 0) * 100) AS nQtyxDiff&quot;
+                + &quot;, ((IFNULL(d.nUnitPrce, 0) - IFNULL(c.nUnitPrce, 0)) / NULLIF(d.nUnitPrce, 0) * 100) AS nPrceDiff&quot;
+                + &quot; FROM PO_Master a&quot;
+                + &quot; LEFT JOIN PO_Detail c ON a.sTransNox = c.sTransNox&quot;
+                + &quot; LEFT JOIN PO_Quotation_Detail d ON c.sSourceNo = d.sTransNox&quot;
+                + &quot;     AND c.sStockIDx = d.sStockIDx&quot;
+<span class="nc" id="L789">                + &quot;     AND c.sSourceCd = &quot; + SQLUtil.toSQL(PurchaseOrderStatus.SourceCode.POQUOTATION)</span>
+                + &quot; LEFT JOIN PO_Quotation_Master b ON d.sTransNox = b.sTransNox&quot;
+<span class="nc" id="L791">                + &quot; WHERE a.sTransNox = &quot; + SQLUtil.toSQL(poMaster.getTransactionNo());</span>
+
+<span class="nc" id="L793">        ResultSet loRS = poGrider.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L794" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L795">            throw new SQLException(&quot;Unable to load quotation comparison for &quot; + poMaster.getTransactionNo() + &quot;.&quot;);</span>
+        }
+
+<span class="nc" id="L798">        QuotationVariance loVariance = new QuotationVariance();</span>
+<span class="nc" id="L799">        boolean lbTotalSet = false;</span>
+        try {
+<span class="nc bnc" id="L801" title="All 2 branches missed.">            while (loRS.next()) {</span>
+<span class="nc" id="L802">                loVariance.nRecords++;</span>
+
+<span class="nc bnc" id="L804" title="All 2 branches missed.">                if (loRS.getString(&quot;sQuoteNox&quot;) == null) {</span>
+<span class="nc" id="L805">                    loVariance.nUnquoted++;</span>
+<span class="nc" id="L806">                    continue;</span>
+                }
+
+<span class="nc bnc" id="L809" title="All 2 branches missed.">                if (!lbTotalSet) {</span>
+<span class="nc" id="L810">                    loVariance.nTotalDiffPct = loRS.getDouble(&quot;nTotlDiff&quot;);</span>
+<span class="nc" id="L811">                    lbTotalSet = true;</span>
+                }
+
+                //absolute value: any difference, higher or lower, counts
+<span class="nc" id="L815">                loVariance.nMaxQtyDiffPct = Math.max(loVariance.nMaxQtyDiffPct, Math.abs(loRS.getDouble(&quot;nQtyxDiff&quot;)));</span>
+<span class="nc" id="L816">                loVariance.nMaxPriceDiffPct = Math.max(loVariance.nMaxPriceDiffPct, Math.abs(loRS.getDouble(&quot;nPrceDiff&quot;)));</span>
+            }
+        } finally {
+<span class="nc" id="L819">            loRS.close();</span>
+        }
+<span class="nc" id="L821">        return loVariance;</span>
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+    protected static JSONObject success() {
+<span class="fc" id="L828">        return Results.success();</span>
+    }
+
+    protected static JSONObject error(String fsMessage) {
+<span class="fc" id="L832">        return Results.error(fsMessage);</span>
+    }
+
+    public static boolean isSuccess(JSONObject foJSON) {
+<span class="nc" id="L836">        return Results.isSuccess(foJSON);</span>
+    }
+
+    protected static boolean isEmpty(String fsValue) {
+<span class="fc bfc" id="L840" title="All 4 branches covered.">        return fsValue == null || fsValue.trim().isEmpty();</span>
+    }
+
+    protected static double num(Number fnValue) {
+<span class="pc bpc" id="L844" title="1 of 2 branches missed.">        return fnValue == null ? 0.0000 : fnValue.doubleValue();</span>
+    }
+
+    /** Money as BigDecimal (exact comparisons; null is zero). */
+    protected static BigDecimal money(Number fnValue) {
+<span class="pc bpc" id="L849" title="1 of 2 branches missed.">        if (fnValue == null) {</span>
+<span class="nc" id="L850">            return BigDecimal.ZERO;</span>
+        }
+<span class="pc bpc" id="L852" title="1 of 2 branches missed.">        if (fnValue instanceof BigDecimal) {</span>
+<span class="fc" id="L853">            return (BigDecimal) fnValue;</span>
+        }
+<span class="nc" id="L855">        return BigDecimal.valueOf(fnValue.doubleValue());</span>
+    }
+
+    protected static BigDecimal money(double fnValue) {
+<span class="fc" id="L859">        return BigDecimal.valueOf(fnValue);</span>
+    }
+
+    /** fdAmount x fdPercent / 100, rounded to 4 decimals. */
+    protected static BigDecimal percentOf(BigDecimal fdAmount, BigDecimal fdPercent) {
+<span class="fc" id="L864">        return fdAmount.multiply(fdPercent).divide(HUNDRED, 4, RoundingMode.HALF_UP);</span>
+    }
+
+    protected static boolean sameMoney(Number fnLeft, Number fnRight) {
+<span class="pc bpc" id="L868" title="1 of 2 branches missed.">        return money(fnLeft).compareTo(money(fnRight)) == 0;</span>
+    }
+
+    protected static LocalDate toLocalDate(Date fdValue) {
+<span class="fc bfc" id="L872" title="All 2 branches covered.">        return fdValue == null ? null : new java.sql.Date(fdValue.getTime()).toLocalDate();</span>
+    }
+
+    protected boolean hasRow(String fsSQL) throws SQLException {
+<span class="nc" id="L876">        ResultSet loRS = poGrider.executeQuery(fsSQL);</span>
+<span class="nc bnc" id="L877" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L878">            throw new SQLException(&quot;Query execution failed.&quot;);</span>
+        }
+        try {
+<span class="nc" id="L881">            return loRS.next();</span>
+        } finally {
+<span class="nc" id="L883">            loRS.close();</span>
+        }
+    }
+
+    /** Details passed through setDetail(). */
+    protected ArrayList&lt;Model_PO_Detail&gt; getDetails() {
+<span class="nc" id="L889">        return paDetail;</span>
+    }
+
+    /** Removed details passed through setRemovedDetail(). */
+    protected ArrayList&lt;Model_PO_Detail&gt; getRemovedDetails() {
+<span class="nc" id="L894">        return paDetailRemoved;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

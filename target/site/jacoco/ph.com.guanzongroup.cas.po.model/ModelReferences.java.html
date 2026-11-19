@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelReferences.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.model</a> &gt; <span class="el_source">ModelReferences.java</span></div><h1>ModelReferences.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.model;
+
+import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import org.guanzon.appdriver.agent.services.Model;
+import org.guanzon.appdriver.agent.services.ReferenceCache;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.constant.EditMode;
+import org.json.simple.JSONObject;
+
+/**
+ * The lazy reference-record loading the PO models share.
+ *
+ * &lt;p&gt;
+ * Every reference accessor of {@link Model_PO_Master} / {@link Model_PO_Detail}
+ * (Branch(), Supplier(), Inventory(), ...) did the same thing in its own copy;
+ * they now call {@link #load}:&lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;empty id: the reference is cleared (initialize) and returned;&lt;/li&gt;
+ * &lt;li&gt;the reference already holds this id: returned as is (no query);&lt;/li&gt;
+ * &lt;li&gt;reference tables only (cacheTable not null): served from
+ * {@link ReferenceCache} when another record loaded it already;&lt;/li&gt;
+ * &lt;li&gt;otherwise opened from the database; cached on success (reference
+ * tables), cleared on failure.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;
+ * Reference tables (Branch, Industry, Category, Company, Term, Client, Brand,
+ * Color, ...) are cached; transaction records (inventory, stock requests,
+ * quotations) are not, so they are never served stale.&lt;/p&gt;
+ */
+final class ModelReferences {
+
+    private ModelReferences() {
+    }
+
+    /** Id of the record a reference model currently holds. */
+    @FunctionalInterface
+    interface IdOf&lt;T&gt; {
+
+        String get(T foModel);
+    }
+
+    /** How a reference model is opened by its id (openRecord by default). */
+    @FunctionalInterface
+    interface Opener&lt;T&gt; {
+
+        JSONObject open(T foModel, String fsId) throws SQLException, GuanzonException;
+    }
+
+    /** Loads a reference opened with openRecord(id). */
+    static &lt;T extends Model&gt; T load(T foModel, String fsId, String fsCacheTable, IdOf&lt;T&gt; foIdOf)
+            throws SQLException, GuanzonException {
+<span class="nc" id="L55">        return load(foModel, fsId, fsCacheTable, foIdOf, (loModel, lsId) -&gt; loModel.openRecord(lsId));</span>
+    }
+
+    /**
+     * Loads a reference model for fsId (see the class comment).
+     *
+     * @param fsCacheTable ReferenceCache table name; null for transaction
+     * records (never cached)
+     */
+    static &lt;T extends Model&gt; T load(T foModel, String fsId, String fsCacheTable, IdOf&lt;T&gt; foIdOf, Opener&lt;T&gt; foOpen)
+            throws SQLException, GuanzonException {
+<span class="nc bnc" id="L66" title="All 4 branches missed.">        if (fsId == null || fsId.isEmpty()) {</span>
+<span class="nc" id="L67">            foModel.initialize();</span>
+<span class="nc" id="L68">            return foModel;</span>
+        }
+<span class="nc bnc" id="L70" title="All 4 branches missed.">        if (foModel.getEditMode() == EditMode.READY &amp;&amp; fsId.equals(foIdOf.get(foModel))) {</span>
+<span class="nc" id="L71">            return foModel;</span>
+        }
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        if (fsCacheTable != null &amp;&amp; ReferenceCache.tryLoad(fsCacheTable, fsId, foModel)) {</span>
+<span class="nc" id="L74">            return foModel;</span>
+        }
+
+<span class="nc" id="L77">        JSONObject loJSON = foOpen.open(foModel, fsId);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (&quot;success&quot;.equals(loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">            if (fsCacheTable != null) {</span>
+<span class="nc" id="L80">                ReferenceCache.store(fsCacheTable, fsId, foModel);</span>
+            }
+        } else {
+<span class="nc" id="L83">            foModel.initialize();</span>
+        }
+<span class="nc" id="L85">        return foModel;</span>
+    }
+
+    /** Text value of a column; empty for null. */
+    static String text(Object foValue) {
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        return foValue == null ? &quot;&quot; : (String) foValue;</span>
+    }
+
+    /** The date part of a date-time (yyyy-MM-dd), as the PO default dates. */
+    static String shortDate(Date fdValue) {
+<span class="nc" id="L95">        return new SimpleDateFormat(&quot;yyyy-MM-dd&quot;).format(fdValue);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

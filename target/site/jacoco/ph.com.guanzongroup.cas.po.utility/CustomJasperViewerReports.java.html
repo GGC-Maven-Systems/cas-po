@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CustomJasperViewerReports.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.utility</a> &gt; <span class="el_source">CustomJasperViewerReports.java</span></div><h1>CustomJasperViewerReports.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.utility;
+
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.File;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import javafx.application.Platform;
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import net.sf.jasperreports.engine.JRException;
+import net.sf.jasperreports.engine.JasperExportManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperPrintManager;
+import net.sf.jasperreports.engine.export.HtmlExporter;
+import net.sf.jasperreports.engine.export.JRCsvExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRDocxExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
+import net.sf.jasperreports.export.SimpleExporterInput;
+import net.sf.jasperreports.export.SimpleHtmlExporterOutput;
+import net.sf.jasperreports.export.SimpleOutputStreamExporterOutput;
+import net.sf.jasperreports.export.SimpleWriterExporterOutput;
+import net.sf.jasperreports.export.SimpleXlsxReportConfiguration;
+import net.sf.jasperreports.swing.JRViewer;
+import net.sf.jasperreports.swing.JRViewerToolbar;
+import net.sf.jasperreports.view.JasperViewer;
+import org.guanzon.appdriver.agent.ShowMessageFX;
+
+/**
+ * Report preview window: JasperViewer with its own Save (PDF, Excel, Word,
+ * CSV, HTML, JasperReports XML) and Print buttons, and one window per report
+ * title (showing a title that is already open brings it to the front).
+ *
+ * &lt;p&gt;
+ * Copied from ph.com.guanzongroup.cas.po.utility.CustomJasperViewerReports.
+ * Changes: saving as JasperReports XML works (it cast the print to a report
+ * design and always failed); the open-window list is thread-safe; an unused
+ * cas-cashflow import is gone.&lt;/p&gt;
+ */
+public class CustomJasperViewerReports extends JasperViewer {
+
+<span class="nc" id="L48">    private static final Map&lt;String, CustomJasperViewerReports&gt; OPEN_VIEWERS = new ConcurrentHashMap&lt;&gt;();</span>
+
+    private final String reportTitle;
+
+    /** Shows the report, or brings its window to the front when it is already open. */
+    public static void show(final JasperPrint jasperPrint, final String reportTitle) {
+<span class="nc" id="L54">        CustomJasperViewerReports viewer = OPEN_VIEWERS.get(reportTitle);</span>
+<span class="nc bnc" id="L55" title="All 4 branches missed.">        if (viewer != null &amp;&amp; viewer.isDisplayable()) {</span>
+<span class="nc" id="L56">            viewer.setState(JFrame.NORMAL);</span>
+<span class="nc" id="L57">            viewer.toFront();</span>
+<span class="nc" id="L58">            viewer.requestFocus();</span>
+<span class="nc" id="L59">            return;</span>
+        }
+
+<span class="nc" id="L62">        viewer = new CustomJasperViewerReports(jasperPrint, reportTitle);</span>
+<span class="nc" id="L63">        OPEN_VIEWERS.put(reportTitle, viewer);</span>
+<span class="nc" id="L64">        viewer.addWindowListener(new WindowAdapter() {</span>
+            @Override
+            public void windowClosed(WindowEvent e) {
+<span class="nc" id="L67">                OPEN_VIEWERS.remove(reportTitle);</span>
+<span class="nc" id="L68">            }</span>
+        });
+<span class="nc" id="L70">        viewer.setVisible(true);</span>
+<span class="nc" id="L71">    }</span>
+
+    public CustomJasperViewerReports(final JasperPrint jasperPrint, final String reportTitle) {
+<span class="nc" id="L74">        super(jasperPrint, false);</span>
+<span class="nc" id="L75">        this.reportTitle = reportTitle;</span>
+<span class="nc" id="L76">        customizeToolbar(jasperPrint);</span>
+<span class="nc" id="L77">    }</span>
+
+    // =====================================================================
+    // Toolbar: own Save and Print
+    // =====================================================================
+    private void customizeToolbar(final JasperPrint jasperPrint) {
+<span class="nc" id="L83">        JRViewer viewer = findViewer(getContentPane());</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (viewer == null) {</span>
+<span class="nc" id="L85">            return;</span>
+        }
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        for (Component component : viewer.getComponents()) {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">            if (component instanceof JRViewerToolbar) {</span>
+<span class="nc" id="L89">                JRViewerToolbar toolbar = (JRViewerToolbar) component;</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">                for (Component button : toolbar.getComponents()) {</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">                    if (button instanceof JButton) {</span>
+<span class="nc" id="L92">                        replaceAction((JButton) button, jasperPrint);</span>
+                    }
+                }
+<span class="nc" id="L95">                toolbar.revalidate();</span>
+<span class="nc" id="L96">                toolbar.repaint();</span>
+            }
+        }
+<span class="nc" id="L99">    }</span>
+
+    private void replaceAction(JButton button, final JasperPrint jasperPrint) {
+<span class="nc" id="L102">        String tooltip = button.getToolTipText();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (&quot;Save&quot;.equals(tooltip)) {</span>
+<span class="nc" id="L104">            button.setEnabled(true);</span>
+<span class="nc" id="L105">            button.setVisible(true);</span>
+<span class="nc" id="L106">            removeActions(button);</span>
+<span class="nc" id="L107">            button.addActionListener(e -&gt; saveReport(jasperPrint));</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        } else if (&quot;Print&quot;.equals(tooltip)) {</span>
+<span class="nc" id="L109">            removeActions(button);</span>
+<span class="nc" id="L110">            button.addActionListener(e -&gt; printReport(jasperPrint));</span>
+        }
+<span class="nc" id="L112">    }</span>
+
+    private static void removeActions(JButton button) {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        for (ActionListener listener : button.getActionListeners()) {</span>
+<span class="nc" id="L116">            button.removeActionListener(listener);</span>
+        }
+<span class="nc" id="L118">    }</span>
+
+    private static JRViewer findViewer(Container container) {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (Component component : container.getComponents()) {</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            if (component instanceof JRViewer) {</span>
+<span class="nc" id="L123">                return (JRViewer) component;</span>
+            }
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (component instanceof Container) {</span>
+<span class="nc" id="L126">                JRViewer viewer = findViewer((Container) component);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                if (viewer != null) {</span>
+<span class="nc" id="L128">                    return viewer;</span>
+                }
+            }
+        }
+<span class="nc" id="L132">        return null;</span>
+    }
+
+    // =====================================================================
+    // Print
+    // =====================================================================
+    private void printReport(final JasperPrint jasperPrint) {
+        try {
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            if (JasperPrintManager.printReport(jasperPrint, true)) {</span>
+<span class="nc" id="L141">                inform(&quot;Report printed successfully.&quot;);</span>
+            } else {
+<span class="nc" id="L143">                warn(&quot;Printing was canceled by the user.&quot;);</span>
+<span class="nc" id="L144">                toFront();</span>
+            }
+<span class="nc" id="L146">        } catch (JRException ex) {</span>
+<span class="nc" id="L147">            warn(&quot;Print failed: &quot; + ex.getMessage());</span>
+<span class="nc" id="L148">            toFront();</span>
+<span class="nc" id="L149">        }</span>
+<span class="nc" id="L150">    }</span>
+
+    // =====================================================================
+    // Save
+    // =====================================================================
+    private void saveReport(final JasperPrint jasperPrint) {
+<span class="nc" id="L156">        JFileChooser chooser = new JFileChooser();</span>
+<span class="nc" id="L157">        chooser.setDialogTitle(&quot;Save Report&quot;);</span>
+<span class="nc" id="L158">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;PDF (*.pdf)&quot;, &quot;pdf&quot;));</span>
+<span class="nc" id="L159">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;Excel Workbook (*.xlsx)&quot;, &quot;xlsx&quot;));</span>
+<span class="nc" id="L160">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;Word Document (*.docx)&quot;, &quot;docx&quot;));</span>
+<span class="nc" id="L161">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;CSV (*.csv)&quot;, &quot;csv&quot;));</span>
+<span class="nc" id="L162">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;HTML (*.html)&quot;, &quot;html&quot;));</span>
+<span class="nc" id="L163">        chooser.addChoosableFileFilter(new FileNameExtensionFilter(&quot;JR XML (*.jrpxml)&quot;, &quot;jrpxml&quot;));</span>
+<span class="nc" id="L164">        chooser.setAcceptAllFileFilterUsed(false);</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {</span>
+<span class="nc" id="L167">            warn(&quot;Saving was canceled by the user.&quot;);</span>
+<span class="nc" id="L168">            return;</span>
+        }
+
+        try {
+<span class="nc" id="L172">            String extension = ((FileNameExtensionFilter) chooser.getFileFilter()).getExtensions()[0];</span>
+<span class="nc" id="L173">            File file = chooser.getSelectedFile();</span>
+<span class="nc" id="L174">            String fileName = file.getAbsolutePath();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (!fileName.toLowerCase().endsWith(&quot;.&quot; + extension)) {</span>
+<span class="nc" id="L176">                fileName += &quot;.&quot; + extension;</span>
+            }
+
+<span class="nc" id="L179">            export(jasperPrint, extension.toLowerCase(), fileName);</span>
+<span class="nc" id="L180">            inform(&quot;Report saved successfully.\n\n&quot; + fileName);</span>
+<span class="nc" id="L181">        } catch (Exception ex) {</span>
+<span class="nc" id="L182">            warn(&quot;Save failed:\n&quot; + ex.getMessage());</span>
+<span class="nc" id="L183">            SwingUtilities.invokeLater(() -&gt; {</span>
+<span class="nc" id="L184">                setVisible(true);</span>
+<span class="nc" id="L185">                toFront();</span>
+<span class="nc" id="L186">                requestFocus();</span>
+<span class="nc" id="L187">            });</span>
+<span class="nc" id="L188">        }</span>
+<span class="nc" id="L189">    }</span>
+
+    private static void export(JasperPrint jasperPrint, String extension, String fileName) throws JRException {
+<span class="nc bnc" id="L192" title="All 7 branches missed.">        switch (extension) {</span>
+            case &quot;pdf&quot;:
+<span class="nc" id="L194">                JasperExportManager.exportReportToPdfFile(jasperPrint, fileName);</span>
+<span class="nc" id="L195">                break;</span>
+            case &quot;xlsx&quot;: {
+<span class="nc" id="L197">                JRXlsxExporter exporter = new JRXlsxExporter();</span>
+<span class="nc" id="L198">                exporter.setExporterInput(new SimpleExporterInput(jasperPrint));</span>
+<span class="nc" id="L199">                exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(fileName));</span>
+<span class="nc" id="L200">                SimpleXlsxReportConfiguration config = new SimpleXlsxReportConfiguration();</span>
+<span class="nc" id="L201">                config.setOnePagePerSheet(false);</span>
+<span class="nc" id="L202">                config.setDetectCellType(true);</span>
+<span class="nc" id="L203">                config.setCollapseRowSpan(false);</span>
+<span class="nc" id="L204">                exporter.setConfiguration(config);</span>
+<span class="nc" id="L205">                exporter.exportReport();</span>
+<span class="nc" id="L206">                break;</span>
+            }
+            case &quot;docx&quot;: {
+<span class="nc" id="L209">                JRDocxExporter exporter = new JRDocxExporter();</span>
+<span class="nc" id="L210">                exporter.setExporterInput(new SimpleExporterInput(jasperPrint));</span>
+<span class="nc" id="L211">                exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(fileName));</span>
+<span class="nc" id="L212">                exporter.exportReport();</span>
+<span class="nc" id="L213">                break;</span>
+            }
+            case &quot;csv&quot;: {
+<span class="nc" id="L216">                JRCsvExporter exporter = new JRCsvExporter();</span>
+<span class="nc" id="L217">                exporter.setExporterInput(new SimpleExporterInput(jasperPrint));</span>
+<span class="nc" id="L218">                exporter.setExporterOutput(new SimpleWriterExporterOutput(fileName));</span>
+<span class="nc" id="L219">                exporter.exportReport();</span>
+<span class="nc" id="L220">                break;</span>
+            }
+            case &quot;html&quot;: {
+<span class="nc" id="L223">                HtmlExporter exporter = new HtmlExporter();</span>
+<span class="nc" id="L224">                exporter.setExporterInput(new SimpleExporterInput(jasperPrint));</span>
+<span class="nc" id="L225">                exporter.setExporterOutput(new SimpleHtmlExporterOutput(fileName));</span>
+<span class="nc" id="L226">                exporter.exportReport();</span>
+<span class="nc" id="L227">                break;</span>
+            }
+            case &quot;jrpxml&quot;:
+                //the filled report as JasperReports XML (was a cast to JRReport that always failed)
+<span class="nc" id="L231">                JasperExportManager.exportReportToXmlFile(jasperPrint, fileName, false);</span>
+<span class="nc" id="L232">                break;</span>
+            default:
+<span class="nc" id="L234">                throw new IllegalArgumentException(&quot;Unsupported file format: &quot; + extension);</span>
+        }
+<span class="nc" id="L236">    }</span>
+
+    // =====================================================================
+    // Messages (JavaFX dialogs from the Swing window)
+    // =====================================================================
+    private void inform(String fsMessage) {
+<span class="nc" id="L242">        Platform.runLater(() -&gt; ShowMessageFX.Information(fsMessage, reportTitle, null));</span>
+<span class="nc" id="L243">    }</span>
+
+    private void warn(String fsMessage) {
+<span class="nc" id="L246">        Platform.runLater(() -&gt; ShowMessageFX.Warning(fsMessage, reportTitle, null));</span>
+<span class="nc" id="L247">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

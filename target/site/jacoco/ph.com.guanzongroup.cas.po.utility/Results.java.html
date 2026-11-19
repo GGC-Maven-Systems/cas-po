@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Results.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.utility</a> &gt; <span class="el_source">Results.java</span></div><h1>Results.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.utility;
+
+import org.json.simple.JSONObject;
+
+/**
+ * The JSONObject results every cas-po class returns:
+ * {&quot;result&quot;: &quot;success&quot; | &quot;error&quot;, &quot;message&quot;: ...}.
+ *
+ * &lt;p&gt;
+ * One copy for the whole module (the controller, validator and helper
+ * classes each had their own).&lt;/p&gt;
+ */
+public final class Results {
+
+    private Results() {
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static JSONObject success() {
+<span class="fc" id="L20">        JSONObject loJSON = new JSONObject();</span>
+<span class="fc" id="L21">        loJSON.put(&quot;result&quot;, &quot;success&quot;);</span>
+<span class="fc" id="L22">        return loJSON;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static JSONObject success(String fsMessage) {
+<span class="fc" id="L27">        JSONObject loJSON = success();</span>
+<span class="fc" id="L28">        loJSON.put(&quot;message&quot;, fsMessage);</span>
+<span class="fc" id="L29">        return loJSON;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static JSONObject error(String fsMessage) {
+<span class="fc" id="L34">        JSONObject loJSON = new JSONObject();</span>
+<span class="fc" id="L35">        loJSON.put(&quot;result&quot;, &quot;error&quot;);</span>
+<span class="fc" id="L36">        loJSON.put(&quot;message&quot;, fsMessage);</span>
+<span class="fc" id="L37">        return loJSON;</span>
+    }
+
+    /** Whether foJSON is a success result (false for null). */
+    public static boolean isSuccess(JSONObject foJSON) {
+<span class="fc bfc" id="L42" title="All 4 branches covered.">        return foJSON != null &amp;&amp; &quot;success&quot;.equals(foJSON.get(&quot;result&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AutoSuggest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui.utility</a> &gt; <span class="el_source">AutoSuggest.java</span></div><h1>AutoSuggest.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.ui.utility;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javafx.animation.PauseTransition;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.stage.Popup;
+import javafx.util.Duration;
+import ph.com.guanzongroup.cas.po.utility.Suggestion;
+
+/**
+ * Auto-suggest drop-down for a searchable text field.
+ *
+ * &lt;p&gt;
+ * While the user types (at least {@link #MIN_CHARS} characters), a list of
+ * matches appears under the field {@link #DELAY_MS} ms after the last
+ * keystroke. Keys while the list is open: Up / Down move, Enter or a mouse
+ * click picks, Esc closes, Tab closes it and moves on (nothing picked). While
+ * it is closed the field works as before (Enter / F3 run the search dialog),
+ * so scanned barcodes still go straight to the search. F3 / F4 always reach
+ * the screen, list open or not, so the search dialog opens with the typed
+ * text.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Text set by the program (showing a loaded record) never opens the list:
+ * only typing does. The list is read on the JavaFX thread, after the delay, so
+ * it never runs at the same time as the screen's own database work (the
+ * queries are small: {@code LIMIT} 15).&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * AutoSuggest.attach(tfSupplier, text -&amp;gt; po().Suggestions().supplier(text), this::pickSupplier);
+ * &lt;/pre&gt;
+ */
+public final class AutoSuggest {
+
+    /** Characters typed before the list appears. */
+    public static final int MIN_CHARS = 2;
+    /** Wait after the last keystroke, in milliseconds. */
+    public static final int DELAY_MS = 300;
+
+<span class="nc" id="L55">    private static final Logger LOG = Logger.getLogger(AutoSuggest.class.getName());</span>
+    private static final double ROW_HEIGHT = 26;
+    private static final int VISIBLE_ROWS = 8;
+
+    /** Reads the matches of the typed text. */
+    @FunctionalInterface
+    public interface Provider {
+
+        List&lt;Suggestion&gt; find(String fsText) throws Exception;
+    }
+
+    private final TextField poField;
+    private final Provider poProvider;
+    private final Consumer&lt;Suggestion&gt; poOnPick;
+<span class="nc" id="L69">    private final Popup poPopup = new Popup();</span>
+<span class="nc" id="L70">    private final ListView&lt;Suggestion&gt; poList = new ListView&lt;&gt;();</span>
+<span class="nc" id="L71">    private final PauseTransition poDelay = new PauseTransition(Duration.millis(DELAY_MS));</span>
+    private boolean pbTyped;
+
+<span class="nc" id="L74">    private AutoSuggest(TextField foField, Provider foProvider, Consumer&lt;Suggestion&gt; foOnPick) {</span>
+<span class="nc" id="L75">        poField = foField;</span>
+<span class="nc" id="L76">        poProvider = foProvider;</span>
+<span class="nc" id="L77">        poOnPick = foOnPick;</span>
+<span class="nc" id="L78">    }</span>
+
+    /** Adds auto-suggest to a field; onPick receives the row the user chose. */
+    public static AutoSuggest attach(TextField foField, Provider foProvider, Consumer&lt;Suggestion&gt; foOnPick) {
+<span class="nc" id="L82">        AutoSuggest loSuggest = new AutoSuggest(foField, foProvider, foOnPick);</span>
+<span class="nc" id="L83">        loSuggest.init();</span>
+<span class="nc" id="L84">        return loSuggest;</span>
+    }
+
+    private void init() {
+<span class="nc" id="L88">        poList.setCellFactory(lv -&gt; new SuggestionCell());</span>
+<span class="nc" id="L89">        poList.setFocusTraversable(false);</span>
+<span class="nc" id="L90">        poList.setOnMouseClicked(e -&gt; {</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            if (e.getButton() == MouseButton.PRIMARY) {</span>
+<span class="nc" id="L92">                pick();</span>
+            }
+<span class="nc" id="L94">        });</span>
+<span class="nc" id="L95">        poPopup.getContent().add(poList);</span>
+<span class="nc" id="L96">        poPopup.setAutoHide(true);</span>
+<span class="nc" id="L97">        poPopup.setAutoFix(true);</span>
+
+<span class="nc" id="L99">        poDelay.setOnFinished(e -&gt; refresh());</span>
+
+        //runs before the screen's own key handler (setOnKeyPressed)
+<span class="nc" id="L102">        poField.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);</span>
+        //the text changes before the key is released; a key that changed nothing (Ctrl+C) ends here
+<span class="nc" id="L104">        poField.addEventFilter(KeyEvent.KEY_RELEASED, e -&gt; pbTyped = false);</span>
+<span class="nc" id="L105">        poField.textProperty().addListener((o, ov, nv) -&gt; onTextChanged(nv));</span>
+<span class="nc" id="L106">        poField.focusedProperty().addListener((o, ov, nv) -&gt; {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (!nv) {</span>
+<span class="nc" id="L108">                close();</span>
+            }
+<span class="nc" id="L110">        });</span>
+<span class="nc" id="L111">    }</span>
+
+    /** Hides the list and cancels a pending refresh. */
+    public void close() {
+<span class="nc" id="L115">        poDelay.stop();</span>
+<span class="nc" id="L116">        pbTyped = false;</span>
+<span class="nc" id="L117">        poPopup.hide();</span>
+<span class="nc" id="L118">    }</span>
+
+    /** Like {@link #close()}, but hides the list after the current event. */
+    private void closeLater() {
+<span class="nc" id="L122">        poDelay.stop();</span>
+<span class="nc" id="L123">        pbTyped = false;</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (poPopup.isShowing()) {</span>
+<span class="nc" id="L125">            Platform.runLater(poPopup::hide);</span>
+        }
+<span class="nc" id="L127">    }</span>
+
+    public boolean isShowing() {
+<span class="nc" id="L130">        return poPopup.isShowing();</span>
+    }
+
+    // =====================================================================
+    // Keys and typing
+    // =====================================================================
+    private void onKeyPressed(KeyEvent foEvent) {
+<span class="nc" id="L137">        KeyCode loKey = foEvent.getCode();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (poPopup.isShowing()) {</span>
+<span class="nc bnc" id="L139" title="All 8 branches missed.">            switch (loKey) {</span>
+                case DOWN:
+<span class="nc" id="L141">                    move(1);</span>
+<span class="nc" id="L142">                    foEvent.consume();</span>
+<span class="nc" id="L143">                    return;</span>
+                case UP:
+<span class="nc" id="L145">                    move(-1);</span>
+<span class="nc" id="L146">                    foEvent.consume();</span>
+<span class="nc" id="L147">                    return;</span>
+                case PAGE_DOWN:
+<span class="nc" id="L149">                    move(VISIBLE_ROWS);</span>
+<span class="nc" id="L150">                    foEvent.consume();</span>
+<span class="nc" id="L151">                    return;</span>
+                case PAGE_UP:
+<span class="nc" id="L153">                    move(-VISIBLE_ROWS);</span>
+<span class="nc" id="L154">                    foEvent.consume();</span>
+<span class="nc" id="L155">                    return;</span>
+                case ENTER:
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                    if (poList.getSelectionModel().getSelectedItem() != null) {</span>
+<span class="nc" id="L158">                        pick();</span>
+<span class="nc" id="L159">                        foEvent.consume();</span>
+<span class="nc" id="L160">                        return;</span>
+                    }
+<span class="nc" id="L162">                    close();</span>
+<span class="nc" id="L163">                    return;</span>
+                case TAB:
+                    //only Enter or a click picks; Tab moves on
+<span class="nc" id="L166">                    closeLater();</span>
+<span class="nc" id="L167">                    return;</span>
+                case ESCAPE:
+<span class="nc" id="L169">                    close();</span>
+<span class="nc" id="L170">                    foEvent.consume();</span>
+<span class="nc" id="L171">                    return;</span>
+                default:
+                    break;
+            }
+        }
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        switch (loKey) {</span>
+            case ENTER:
+            case TAB:
+            case F3:
+            case F4:
+                //the screen handles the key (search dialog / next field): no list afterwards.
+                //The list is hidden after this key event, so hiding it never stops the key
+                //from reaching the screen (F3 with typed text must open the search).
+<span class="nc" id="L185">                closeLater();</span>
+<span class="nc" id="L186">                return;</span>
+            default:
+                break;
+        }
+<span class="nc bnc" id="L190" title="All 8 branches missed.">        if (!loKey.isNavigationKey() &amp;&amp; !loKey.isFunctionKey() &amp;&amp; !loKey.isModifierKey()</span>
+                &amp;&amp; loKey != KeyCode.ESCAPE) {
+<span class="nc" id="L192">            pbTyped = true; //letters, digits, Backspace, Delete, Ctrl+V, ...</span>
+        }
+<span class="nc" id="L194">    }</span>
+
+    private void onTextChanged(String fsText) {
+<span class="nc bnc" id="L197" title="All 8 branches missed.">        if (!pbTyped || !poField.isFocused() || !poField.isEditable() || poField.isDisabled()) {</span>
+<span class="nc" id="L198">            return;</span>
+        }
+<span class="nc" id="L200">        pbTyped = false;</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">        if (fsText == null || fsText.trim().length() &lt; MIN_CHARS) {</span>
+<span class="nc" id="L202">            close();</span>
+<span class="nc" id="L203">            return;</span>
+        }
+<span class="nc" id="L205">        poDelay.playFromStart();</span>
+<span class="nc" id="L206">    }</span>
+
+    // =====================================================================
+    // List
+    // =====================================================================
+    private void refresh() {
+<span class="nc bnc" id="L212" title="All 6 branches missed.">        if (!poField.isFocused() || poField.getScene() == null || poField.getScene().getWindow() == null) {</span>
+<span class="nc" id="L213">            return;</span>
+        }
+<span class="nc bnc" id="L215" title="All 2 branches missed.">        String lsText = poField.getText() == null ? &quot;&quot; : poField.getText().trim();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (lsText.length() &lt; MIN_CHARS) {</span>
+<span class="nc" id="L217">            poPopup.hide();</span>
+<span class="nc" id="L218">            return;</span>
+        }
+
+        List&lt;Suggestion&gt; laRows;
+        try {
+<span class="nc" id="L223">            laRows = poProvider.find(lsText);</span>
+<span class="nc" id="L224">        } catch (Exception ex) {</span>
+<span class="nc" id="L225">            LOG.log(Level.WARNING, &quot;Auto-suggest failed for &quot; + poField.getId(), ex);</span>
+<span class="nc" id="L226">            laRows = Collections.emptyList();</span>
+<span class="nc" id="L227">        }</span>
+<span class="nc bnc" id="L228" title="All 4 branches missed.">        if (laRows == null || laRows.isEmpty()) {</span>
+<span class="nc" id="L229">            poPopup.hide();</span>
+<span class="nc" id="L230">            return;</span>
+        }
+
+<span class="nc" id="L233">        poList.getItems().setAll(laRows);</span>
+<span class="nc" id="L234">        poList.getSelectionModel().select(0);</span>
+<span class="nc" id="L235">        poList.scrollTo(0);</span>
+<span class="nc" id="L236">        poList.setPrefWidth(Math.max(poField.getWidth(), 560));</span>
+<span class="nc" id="L237">        poList.setPrefHeight(Math.min(laRows.size(), VISIBLE_ROWS) * ROW_HEIGHT + 4);</span>
+
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (!poPopup.isShowing()) {</span>
+<span class="nc" id="L240">            Point2D loAt = poField.localToScreen(0, poField.getHeight());</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (loAt == null) {</span>
+<span class="nc" id="L242">                return;</span>
+            }
+<span class="nc" id="L244">            poPopup.show(poField, loAt.getX(), loAt.getY());</span>
+        }
+<span class="nc" id="L246">    }</span>
+
+    private void move(int fnRows) {
+<span class="nc" id="L249">        int lnSize = poList.getItems().size();</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (lnSize == 0) {</span>
+<span class="nc" id="L251">            return;</span>
+        }
+<span class="nc" id="L253">        int lnRow = poList.getSelectionModel().getSelectedIndex() + fnRows;</span>
+<span class="nc" id="L254">        lnRow = Math.max(0, Math.min(lnSize - 1, lnRow));</span>
+<span class="nc" id="L255">        poList.getSelectionModel().select(lnRow);</span>
+<span class="nc" id="L256">        poList.scrollTo(Math.max(0, lnRow - VISIBLE_ROWS / 2));</span>
+<span class="nc" id="L257">    }</span>
+
+    private void pick() {
+<span class="nc" id="L260">        Suggestion loPicked = poList.getSelectionModel().getSelectedItem();</span>
+<span class="nc" id="L261">        close();</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (loPicked != null) {</span>
+<span class="nc" id="L263">            poOnPick.accept(loPicked);</span>
+        }
+<span class="nc" id="L265">    }</span>
+
+    /** Code, name, unit of measure (items) and (grey) detail on one line. */
+    private static final class SuggestionCell extends ListCell&lt;Suggestion&gt; {
+
+<span class="nc" id="L270">        private final Label poCode = new Label();</span>
+<span class="nc" id="L271">        private final Label poName = new Label();</span>
+<span class="nc" id="L272">        private final Label poUnit = new Label();</span>
+<span class="nc" id="L273">        private final Label poDetail = new Label();</span>
+<span class="nc" id="L274">        private final HBox poRow = new HBox(10, poCode, poName, poUnit, poDetail);</span>
+
+<span class="nc" id="L276">        SuggestionCell() {</span>
+<span class="nc" id="L277">            poCode.setMinWidth(110);</span>
+<span class="nc" id="L278">            poCode.setStyle(&quot;-fx-text-fill: #555555;&quot;);</span>
+<span class="nc" id="L279">            poDetail.setStyle(&quot;-fx-text-fill: #888888; -fx-font-size: 11px;&quot;);</span>
+<span class="nc" id="L280">            poUnit.setMinWidth(60);</span>
+<span class="nc" id="L281">            poUnit.setStyle(&quot;-fx-font-weight: bold;&quot;);</span>
+<span class="nc" id="L282">            poDetail.setMaxWidth(200);</span>
+<span class="nc" id="L283">            HBox.setHgrow(poName, Priority.ALWAYS);</span>
+<span class="nc" id="L284">            poName.setMaxWidth(Double.MAX_VALUE);</span>
+<span class="nc" id="L285">            poRow.setPadding(new Insets(1, 4, 1, 4));</span>
+<span class="nc" id="L286">        }</span>
+
+        @Override
+        protected void updateItem(Suggestion foItem, boolean fbEmpty) {
+<span class="nc" id="L290">            super.updateItem(foItem, fbEmpty);</span>
+<span class="nc" id="L291">            setText(null);</span>
+<span class="nc bnc" id="L292" title="All 4 branches missed.">            if (fbEmpty || foItem == null) {</span>
+<span class="nc" id="L293">                setGraphic(null);</span>
+<span class="nc" id="L294">                return;</span>
+            }
+<span class="nc" id="L296">            poCode.setText(foItem.getCode());</span>
+<span class="nc" id="L297">            poName.setText(foItem.getName());</span>
+<span class="nc" id="L298">            poUnit.setText(foItem.getUnit());</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">            poUnit.setVisible(!foItem.getUnit().isEmpty());</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">            poUnit.setManaged(!foItem.getUnit().isEmpty());</span>
+<span class="nc" id="L301">            poDetail.setText(foItem.getDetail());</span>
+<span class="nc" id="L302">            setGraphic(poRow);</span>
+<span class="nc" id="L303">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

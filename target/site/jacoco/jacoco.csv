@@ -1,0 +1,64 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+cas-po,ph.com.guanzongroup.cas.po.model,Model_PO_Detail,812,0,50,0,139,0,79,0,54,0
+cas-po,ph.com.guanzongroup.cas.po.model,Model_PO_Master,815,0,36,0,144,0,100,0,82,0
+cas-po,ph.com.guanzongroup.cas.po.model,ModelReferences,77,0,18,0,16,0,14,0,5,0
+cas-po,ph.com.guanzongroup.cas.po.ui.model,ModelPurchaseOrder,166,0,0,0,43,0,22,0,22,0
+cas-po,ph.com.guanzongroup.cas.po.ui.model,ModelPurchaseOrderDetail,163,0,0,0,42,0,21,0,21,0
+cas-po,ph.com.guanzongroup.cas.po.ui.model,ModelPOAttachment,214,0,0,0,41,0,10,0,10,0
+cas-po,ph.com.guanzongroup.cas.po.status,POStatus,7,262,6,34,2,38,7,23,1,9
+cas-po,ph.com.guanzongroup.cas.po.services,PurchaseOrderControllers,84,0,10,0,23,0,10,0,5,0
+cas-po,ph.com.guanzongroup.cas.po.services,PurchaseOrderModels,76,0,8,0,23,0,7,0,3,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,CustomCommonUtil,279,0,46,0,52,0,39,0,16,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,AutoSuggest,454,0,62,0,118,0,52,0,18,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,SearchFields,36,0,6,0,6,0,4,0,1,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,JFXUtil,1373,0,132,0,274,0,105,0,39,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,AutoSuggest.SuggestionCell,153,0,8,0,29,0,6,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,JFXUtil.new TableCell() {...},21,0,4,0,4,0,4,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,JFXUtil.new ListCell() {...},109,0,16,0,23,0,14,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,JFXUtil.new ListCell() {...},26,0,4,0,8,0,4,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui.utility,ScreenShortcuts,259,0,50,0,54,0,38,0,13,0
+cas-po,ph.com.guanzongroup.cas.po.utility,CustomJasperViewerReports.new WindowAdapter() {...},12,0,0,0,3,0,2,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.utility,Results,0,48,0,4,0,11,0,6,0,4
+cas-po,ph.com.guanzongroup.cas.po.utility,Suggestion,0,102,0,6,0,19,0,12,0,9
+cas-po,ph.com.guanzongroup.cas.po.utility,CustomJasperViewerReports,555,0,41,0,122,0,40,0,17,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_EntryController.new TableRow() {...},41,0,6,0,11,0,5,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_EntryController.new Task() {...},357,0,23,0,66,0,17,0,5,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_EntryController.new TableRow() {...},41,0,6,0,11,0,5,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_EntryController,7801,0,825,0,1492,0,568,0,136,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneralApp,529,0,31,0,105,0,22,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_HistoryController.new Task() {...},189,0,9,0,39,0,10,0,5,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_ConfirmationController,6386,0,580,0,1193,0,404,0,96,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_ConfirmationController.new TableRow() {...},49,0,8,0,15,0,7,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_ConfirmationController.new TableRow() {...},41,0,6,0,11,0,5,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_ConfirmationController.new Task() {...},357,0,23,0,66,0,17,0,5,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_HistoryController.new TableRow() {...},41,0,6,0,11,0,5,0,2,0
+cas-po,ph.com.guanzongroup.cas.po.ui,PurchaseOrderGeneral_HistoryController,3152,0,254,0,620,0,197,0,63,0
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrderValidator.QuotationVariance,0,13,0,4,0,2,0,4,0,2
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrderValidator,544,991,87,155,124,205,86,110,26,43
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrder_SP,13,0,0,0,6,0,6,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrderValidator.SavedLine,0,15,0,0,0,6,0,3,0,3
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrder_General,12,177,7,35,3,42,8,20,1,6
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrder_Appliance,13,0,0,0,6,0,6,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrder_MC,13,0,0,0,6,0,6,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.validator,PurchaseOrder_MP,13,0,0,0,6,0,6,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderPrinter.CachedReport,9,0,0,0,4,0,1,0,1,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderSearch,682,15,58,0,145,6,53,1,24,1
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrder,58,1919,10,180,9,398,18,197,8,112
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderAdvancePayment,351,20,22,0,71,7,18,2,7,2
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderSourceDocuments,1644,43,160,0,291,12,100,2,18,2
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderSuggestions,155,418,13,39,21,62,13,29,3,13
+cas-po,ph.com.guanzongroup.cas.po.controller,HeadlessUserPrompt,52,0,0,0,11,0,6,0,6,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderPrinter.Reports,150,0,0,0,52,0,23,0,23,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderRegistry,80,0,14,0,16,0,11,0,4,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderMP,21,0,0,0,10,0,9,0,9,0
+cas-po,ph.com.guanzongroup.cas.po.controller,FxUserPrompt,22,3,0,0,6,1,4,1,4,1
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderAppliance,21,0,0,0,10,0,9,0,9,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderAttachments,1017,21,92,0,187,7,69,2,23,2
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderGeneral,24,1770,6,123,2,290,9,125,3,66
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderAudit,235,13,22,0,50,5,16,2,5,2
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderPrinter.OrderDetail,85,0,0,0,31,0,18,0,18,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderMC,21,0,0,0,10,0,9,0,9,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderPrinter.PrintViewer,295,0,34,0,61,0,25,0,8,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderSP,21,0,0,0,10,0,9,0,9,0
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderQueries,28,208,2,16,5,33,5,18,3,11
+cas-po,ph.com.guanzongroup.cas.po.controller,PurchaseOrderPrinter,983,36,57,3,154,9,44,3,13,3

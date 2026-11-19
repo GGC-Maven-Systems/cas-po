@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Suggestion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.utility</a> &gt; <span class="el_source">Suggestion.java</span></div><h1>Suggestion.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.utility;
+
+/**
+ * One row of an auto-suggest list: the record's key, the code and name the
+ * user sees, an optional unit of measure (items) and an optional detail
+ * (address, brand / model, ...).
+ */
+public final class Suggestion {
+
+    private final String id;
+    private final String code;
+    private final String name;
+    private final String unit;
+    private final String detail;
+
+    public Suggestion(String fsId, String fsCode, String fsName, String fsDetail) {
+<span class="fc" id="L17">        this(fsId, fsCode, fsName, null, fsDetail);</span>
+<span class="fc" id="L18">    }</span>
+
+<span class="fc" id="L20">    public Suggestion(String fsId, String fsCode, String fsName, String fsUnit, String fsDetail) {</span>
+<span class="fc" id="L21">        id = text(fsId);</span>
+<span class="fc" id="L22">        code = text(fsCode);</span>
+<span class="fc" id="L23">        name = text(fsName);</span>
+<span class="fc" id="L24">        unit = text(fsUnit);</span>
+<span class="fc" id="L25">        detail = text(fsDetail);</span>
+<span class="fc" id="L26">    }</span>
+
+    /** Key used to load the record (client id, branch code, stock id, ...). */
+    public String getId() {
+<span class="fc" id="L30">        return id;</span>
+    }
+
+    public String getCode() {
+<span class="fc" id="L34">        return code;</span>
+    }
+
+    public String getName() {
+<span class="fc" id="L38">        return name;</span>
+    }
+
+    /** Unit of measure (items); empty for other lists. */
+    public String getUnit() {
+<span class="fc" id="L43">        return unit;</span>
+    }
+
+    public String getDetail() {
+<span class="fc" id="L47">        return detail;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L52">        String lsText = code + &quot;  &quot; + name;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (!unit.isEmpty()) {</span>
+<span class="fc" id="L54">            lsText += &quot;  &quot; + unit;</span>
+        }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        return detail.isEmpty() ? lsText : lsText + &quot;  (&quot; + detail + &quot;)&quot;;</span>
+    }
+
+    private static String text(String fsValue) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        return fsValue == null ? &quot;&quot; : fsValue.trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

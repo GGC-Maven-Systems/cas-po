@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrder_General.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.validator</a> &gt; <span class="el_source">PurchaseOrder_General.java</span></div><h1>PurchaseOrder_General.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.validator;
+
+import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.SQLUtil;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONObject;
+
+/**
+ * Purchase Order validator for General Inventory.
+ *
+ * Uses the shared rules of {@link PurchaseOrderValidator} plus the rules that
+ * apply to General Inventory only: advance payment and the engineering
+ * project title.
+ */
+<span class="fc" id="L18">public class PurchaseOrder_General extends PurchaseOrderValidator {</span>
+
+    // =====================================================================
+    // Rule: advance payment (General Inventory only)
+    // =====================================================================
+    /** Saving an OPEN PO: &quot;with advance payment&quot; needs a rate or an amount. */
+    @Override
+    protected JSONObject industryNewRules() throws SQLException, GuanzonException {
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        if (poMaster.getWithAdvPaym()</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                &amp;&amp; money(poMaster.getDownPaymentRatesPercentage()).signum() &lt;= 0</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">                &amp;&amp; money(poMaster.getDownPaymentRatesAmount()).signum() &lt;= 0) {</span>
+<span class="fc" id="L29">            return error(&quot;You selected advance rate, but no Adv Rate and Adv Amount.&quot;);</span>
+        }
+<span class="fc" id="L31">        return success();</span>
+    }
+
+    public JSONObject validateAdvancePaymentRate(double fnRate) {
+<span class="fc" id="L35">        BigDecimal ldAfterDiscounts = getAmountAfterDiscounts();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (ldAfterDiscounts.signum() &lt;= 0) {</span>
+<span class="fc" id="L37">            return error(&quot;Invalid Advance Payment Rate, the total transaction amount is 0.0000&quot;);</span>
+        }
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">        if (fnRate &lt; 0.0000 || fnRate &gt; 100.0000) {</span>
+<span class="fc" id="L40">            return error(&quot;Invalid Advance Payment Rate. Must be between 0.0000 and 100.0000&quot;);</span>
+        }
+<span class="fc" id="L42">        BigDecimal ldTotalAdvance = percentOf(ldAfterDiscounts, money(fnRate))</span>
+<span class="fc" id="L43">                .add(money(poMaster.getDownPaymentRatesAmount()));</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (ldTotalAdvance.compareTo(ldAfterDiscounts) &gt; 0) {</span>
+<span class="fc" id="L45">            return error(&quot;Invalid Downpayment Total.&quot;);</span>
+        }
+<span class="fc" id="L47">        return success();</span>
+    }
+
+    public JSONObject validateAdvancePaymentAmount(double fnAmount) {
+<span class="fc" id="L51">        BigDecimal ldAfterDiscounts = getAmountAfterDiscounts();</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (ldAfterDiscounts.signum() &lt;= 0) {</span>
+<span class="nc" id="L53">            return error(&quot;Invalid Advance Payment Amount, the total transaction amount is 0.0000&quot;);</span>
+        }
+<span class="fc" id="L55">        BigDecimal ldAmount = money(fnAmount);</span>
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        if (ldAmount.signum() &lt; 0 || ldAmount.compareTo(ldAfterDiscounts) &gt; 0) {</span>
+<span class="fc" id="L57">            return error(&quot;Invalid Advance Payment Amount&quot;);</span>
+        }
+<span class="fc" id="L59">        BigDecimal ldTotalAdvance = percentOf(ldAfterDiscounts, money(poMaster.getDownPaymentRatesPercentage()))</span>
+<span class="fc" id="L60">                .add(ldAmount);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (ldTotalAdvance.compareTo(ldAfterDiscounts) &gt; 0) {</span>
+<span class="fc" id="L62">            return error(&quot;Invalid Downpayment Total.&quot;);</span>
+        }
+<span class="fc" id="L64">        return success();</span>
+    }
+
+    // =====================================================================
+    // Rule: engineering project title (General Inventory only)
+    // =====================================================================
+    /**
+     * Whether saving or changing the status must tag/untag the project
+     * referenced by this PO.
+     *
+     * &lt;p&gt;
+     * Applies only to the department in {@link #getProjectTitleDepartment()},
+     * when a reference is set, for OPEN, CANCELLED and VOID. With
+     * fbCheckUsage, the project must not be used by more than one PO.&lt;/p&gt;
+     */
+    public boolean isProjectTitleUpdateRequired(String fsStatus, boolean fbCheckUsage) throws SQLException {
+<span class="fc" id="L80">        String lsDepartment = getProjectTitleDepartment();</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">        if (isEmpty(lsDepartment) || !lsDepartment.equals(poGrider.getDepartment())) {</span>
+<span class="fc" id="L82">            return false;</span>
+        }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (isEmpty(poMaster.getReference())) {</span>
+<span class="fc" id="L85">            return false;</span>
+        }
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (!PurchaseOrderStatus.OPEN.equals(fsStatus)</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                &amp;&amp; !PurchaseOrderStatus.CANCELLED.equals(fsStatus)</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                &amp;&amp; !PurchaseOrderStatus.VOID.equals(fsStatus)) {</span>
+<span class="fc" id="L90">            return false;</span>
+        }
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        return !fbCheckUsage || getProjectUsageCount(poMaster.getReference()) &lt;= 1;</span>
+    }
+
+    /** Number of Purchase Orders that reference the project. */
+    public int getProjectUsageCount(String fsProjectCode) throws SQLException {
+<span class="fc" id="L97">        String lsSQL = &quot;SELECT COUNT(*) AS nCount&quot;</span>
+                + &quot; FROM PO_Master&quot;
+<span class="fc" id="L99">                + &quot; WHERE sReferNox = &quot; + SQLUtil.toSQL(fsProjectCode);</span>
+<span class="fc" id="L100">        ResultSet loRS = poGrider.executeQuery(lsSQL);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L102">            throw new SQLException(&quot;Unable to check project usage.&quot;);</span>
+        }
+        try {
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            return loRS.next() ? loRS.getInt(&quot;nCount&quot;) : 0;</span>
+        } finally {
+<span class="fc" id="L107">            loRS.close();</span>
+        }
+    }
+
+    /** Department that tags project titles. Default: system property allowed.department. */
+    protected String getProjectTitleDepartment() {
+<span class="nc" id="L113">        return System.getProperty(&quot;allowed.department&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

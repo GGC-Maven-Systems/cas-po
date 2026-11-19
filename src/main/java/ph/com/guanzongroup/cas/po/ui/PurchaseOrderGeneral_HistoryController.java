@@ -6,6 +6,8 @@ package ph.com.guanzongroup.cas.po.ui;
 
 import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrderDetail;
 import ph.com.guanzongroup.cas.po.ui.utility.CustomCommonUtil;
+import ph.com.guanzongroup.cas.po.ui.utility.ScreenShortcuts;
+import ph.com.guanzongroup.cas.po.ui.utility.SearchFields;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -103,6 +105,7 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
     private String psIndustryID = "";
     private String psCompanyID = "";
     private String psSupplierID = "";
+    private String psSupplierName = ""; //text shown for psSupplierID
     private String psCategoryID = "";
     private String psReferID = "";
     private String psTransNo = "";
@@ -251,6 +254,7 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
     private void initAll() {
         initButtonsClickActions();
         initTextFieldKeyPressed();
+        initScreenKeys();
         initTextFieldsProperty();
         initTableDetail();
         initAttachmentsGrid();
@@ -512,11 +516,55 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
         }
     }
 
+    /** Searchable-field marks and button shortcuts (view only: nothing to save). */
+    private void initScreenKeys() {
+        SearchFields.mark(tfSearchSupplier, tfSearchReferenceNo, tfSearchTransNo);
+        ScreenShortcuts.tabOutOf(taRemarks);
+        ScreenShortcuts.on(AnchorMain)
+                .add(btnBrowse, "Shortcut+O")
+                .add(btnPrint, "Shortcut+P");
+    }
+
     private void initTextFieldKeyPressed() {
         List<TextField> loTxtField = Arrays.asList(tfSearchSupplier,
                 tfSearchReferenceNo,tfSearchTransNo);
 
         loTxtField.forEach(tf -> tf.setOnKeyPressed(event -> txtField_KeyPressed(event)));
+    }
+
+    /**
+     * Whether the field still shows the record that is loaded (its id is set
+     * and the text is what the screen displays for it), so Enter needs no search.
+     */
+    private boolean isLoadedValue(String fsFieldId, String fsText) throws SQLException, GuanzonException {
+        if (fsText == null || fsText.trim().isEmpty()) {
+            return false;
+        }
+        String lsLoaded;
+        switch (fsFieldId) {
+            case "tfSearchSupplier":
+                lsLoaded = isEmpty(psSupplierID) ? null : psSupplierName;
+                break;
+            default:
+                return false;
+        }
+        return lsLoaded != null && !lsLoaded.isEmpty() && fsText.trim().equals(lsLoaded.trim());
+    }
+
+    private static boolean isEmpty(String fsValue) {
+        return fsValue == null || fsValue.isEmpty();
+    }
+
+    /** Fields whose Enter / F3 opens a search (Tab only moves on). */
+    private static boolean isSearchField(String fsFieldId) {
+        switch (fsFieldId) {
+            case "tfSearchSupplier":
+            case "tfSearchReferenceNo":
+            case "tfSearchTransNo":
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void txtField_KeyPressed(KeyEvent event) {
@@ -535,6 +583,19 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
                     case TAB:
                     case ENTER:
                     case F3:
+                        //Tab only moves to the next field; Enter and F3 open the search
+                        if (event.getCode() == TAB && isSearchField(txtFieldID)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
+                        //Enter on a field still showing its loaded record (unique id present): no search, move on.
+                        //F3 always searches.
+                        if (event.getCode() == ENTER && isSearchField(txtFieldID) && isLoadedValue(txtFieldID, lsValue)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
                         switch (txtFieldID) {
                             case "tfSearchSupplier":
                                 poJSON = po().SearchSupplier(lsValue, false);
@@ -545,6 +606,7 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
                                 }
                                 psSupplierID = po().Master().getSupplierID();
                                 tfSearchSupplier.setText(po().Master().Supplier().getCompanyName());
+                                psSupplierName = tfSearchSupplier.getText();
                                 break;
                             case "tfSearchReferenceNo":
                                 psReferID = lsValue;
@@ -831,91 +893,57 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
         });
     }
     
+    /**
+     * Attachment list. Built on the screen thread: the background task only
+     * reset the image view (a screen control, which must not be changed off the
+     * screen thread) and handed the rest back to the screen thread anyway.
+     * Errors are logged now (they were silently ignored).
+     */
     private void loadTableAttachment() {
-        // Setting data to table detail
-        ProgressIndicator progressIndicator = new ProgressIndicator();
-        progressIndicator.setMaxHeight(50);
-        progressIndicator.setStyle("-fx-progress-color: #FF8201;");
-        StackPane loadingPane = new StackPane(progressIndicator);
-        loadingPane.setAlignment(Pos.CENTER);
-        tblAttachments.setPlaceholder(loadingPane);
-        progressIndicator.setVisible(true);
-
-        Label placeholderLabel = new Label("NO RECORD TO LOAD");
-        placeholderLabel.setStyle("-fx-font-size: 10px;"); // Adjust the size as needed
-
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                scaleFactor = 1.0;
-                JFXUtil.resetImageBounds(imageView, stackPane1);
-                Platform.runLater(() -> {
-                    try {
-                        attachment_data.clear();
-                        int lnCtr;
-                        int lnCount = 0;
-                        for (lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
-                            if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
-                                continue;
-                            }
-                            lnCount += 1;
-                            attachment_data.add(
-                                    new ModelPOAttachment(String.valueOf(lnCount),
-                                            String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
-                                            String.valueOf(lnCtr)
-                                    ));
-                        }
-                        int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
-                        if (lnTempRow < 0 || lnTempRow
-                                >= attachment_data.size()) {
-                            if (!attachment_data.isEmpty()) {
-                                /* FOCUS ON FIRST ROW */
-                                JFXUtil.selectAndFocusRow(tblAttachments, 0);
-                                int lnRow = Integer.parseInt(attachment_data.get(0).getIndex03());
-                                pnAttachment = lnRow;
-                                loadRecordAttachment(true);
-                            }
-                        } else {
-                            /* FOCUS ON THE ROW THAT pnRowDetail POINTS TO */
-                            JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
-                            int lnRow = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
-                            pnAttachment = lnRow;
-                            loadRecordAttachment(true);
-                        }
-                        if (attachment_data.size() <= 0) {
-                            loadRecordAttachment(false);
-                        }
-                    } catch (Exception e) {
-                    }
-                });
-
-                return null;
-            }
-
-            @Override
-            protected void succeeded() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
-                } else {
-                    tblAttachments.toFront();
+        scaleFactor = 1.0;
+        JFXUtil.resetImageBounds(imageView, stackPane1);
+        attachment_data.clear();
+        try {
+            int lnCount = 0;
+            for (int lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
+                if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
+                    continue;
                 }
-                progressIndicator.setVisible(false);
-
+                lnCount += 1;
+                attachment_data.add(new ModelPOAttachment(String.valueOf(lnCount),
+                        String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
+                        String.valueOf(lnCtr)));
             }
-
-            @Override
-            protected void failed() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
+            int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
+            if (lnTempRow < 0 || lnTempRow >= attachment_data.size()) {
+                if (!attachment_data.isEmpty()) {
+                    /* FOCUS ON FIRST ROW */
+                    JFXUtil.selectAndFocusRow(tblAttachments, 0);
+                    pnAttachment = Integer.parseInt(attachment_data.get(0).getIndex03());
+                    loadRecordAttachment(true);
                 }
-                progressIndicator.setVisible(false);
+            } else {
+                /* FOCUS ON THE ROW THAT pnAttachment POINTS TO */
+                JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
+                pnAttachment = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
+                loadRecordAttachment(true);
             }
+            if (attachment_data.isEmpty()) {
+                loadRecordAttachment(false);
+            }
+        } catch (Exception ex) {
+            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, "Unable to load the attachments", ex);
+        }
 
-        };
-        new Thread(task).start(); // Run task in background
-
+        if (attachment_data.isEmpty()) {
+            Label loPlaceholder = new Label("NO RECORD TO LOAD");
+            loPlaceholder.setStyle("-fx-font-size: 10px;");
+            tblAttachments.setPlaceholder(loPlaceholder);
+        } else {
+            tblAttachments.toFront();
+        }
     }
-    
+
     public void loadRecordAttachment(boolean lbloadImage) {
         try {
             boolean lbShow2 = pnEditMode == EditMode.UPDATE || pnEditMode == EditMode.ADDNEW;

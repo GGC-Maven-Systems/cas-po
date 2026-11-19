@@ -1,0 +1,1213 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderGeneral_HistoryController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui</a> &gt; <span class="el_source">PurchaseOrderGeneral_HistoryController.java</span></div><h1>PurchaseOrderGeneral_HistoryController.java</h1><pre class="source lang-java linenums">/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
+ */
+package ph.com.guanzongroup.cas.po.ui;
+
+import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrderDetail;
+import ph.com.guanzongroup.cas.po.ui.utility.CustomCommonUtil;
+import ph.com.guanzongroup.cas.po.ui.utility.ScreenShortcuts;
+import ph.com.guanzongroup.cas.po.ui.utility.SearchFields;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.ResourceBundle;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javafx.animation.PauseTransition;
+import javafx.animation.TranslateTransition;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.DatePicker;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TablePosition;
+import javafx.scene.control.TableRow;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import static javafx.scene.input.KeyCode.DOWN;
+import static javafx.scene.input.KeyCode.ENTER;
+import static javafx.scene.input.KeyCode.F3;
+import static javafx.scene.input.KeyCode.TAB;
+import static javafx.scene.input.KeyCode.UP;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ScrollEvent;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.StackPane;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+import javafx.util.Duration;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.guanzon.appdriver.agent.ShowMessageFX;
+import org.guanzon.appdriver.base.CommonUtils;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.LogWrapper;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.DocumentType;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.appdriver.constant.RecordStatus;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.controller.PurchaseOrderGeneral;
+import ph.com.guanzongroup.cas.po.services.PurchaseOrderControllers;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONObject;
+import ph.com.guanzongroup.cas.po.ui.model.ModelPOAttachment;
+import ph.com.guanzongroup.cas.po.ui.utility.JFXUtil;
+
+/**
+ * Purchase Order history (inquiry) screen for General Inventory, on the new
+ * controller ({@link PurchaseOrderGeneral}).
+ *
+ * &lt;p&gt;
+ * A copy of integsys' PurchaseOrder_HistoryController (which stays on the old
+ * controller), rewired to ph.com.guanzongroup.cas.po. Read-only: find
+ * a PO, view its details and attachments, approval / status history, print.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Run it with {@link PurchaseOrderGeneralApp} (-Dpo.screen=history).&lt;/p&gt;
+ */
+<span class="nc" id="L94">public class PurchaseOrderGeneral_HistoryController implements Initializable, ScreenInterface {</span>
+
+    private GRiderCAS poApp;
+    private PurchaseOrderControllers poPurchasingController;
+<span class="nc" id="L98">    private String psFormName = &quot;Purchase Order History&quot;;</span>
+    private LogWrapper logWrapper;
+    private JSONObject poJSON;
+
+    private int pnEditMode;
+<span class="nc" id="L103">    private int pnTblDetailRow = -1;</span>
+
+<span class="nc" id="L105">    private String psIndustryID = &quot;&quot;;</span>
+<span class="nc" id="L106">    private String psCompanyID = &quot;&quot;;</span>
+<span class="nc" id="L107">    private String psSupplierID = &quot;&quot;;</span>
+<span class="nc" id="L108">    private String psSupplierName = &quot;&quot;; //text shown for psSupplierID</span>
+<span class="nc" id="L109">    private String psCategoryID = &quot;&quot;;</span>
+<span class="nc" id="L110">    private String psReferID = &quot;&quot;;</span>
+<span class="nc" id="L111">    private String psTransNo = &quot;&quot;;</span>
+
+    /** What the Close button does (e.g. close the tab); default: close the window. */
+    private Runnable poOnClose;
+<span class="nc" id="L115">    private ObservableList&lt;ModelPurchaseOrderDetail&gt; detail_data = FXCollections.observableArrayList();</span>
+
+    @FXML
+    private AnchorPane apBrowse, apButton;
+    @FXML
+    private AnchorPane AnchorMain;
+    @FXML
+    private Button btnBrowse, btnPrint, btnTransHistory, btnClose,btnHistApproval;
+    @FXML
+    private Label lblTransactionStatus, lblSource;
+    @FXML
+    private TextField tfSearchSupplier, tfSearchReferenceNo,tfSearchTransNo;
+    @FXML
+    private TextField tfTransactionNo, tfSupplier, tfDestination, tfReferenceNo,
+            tfTerm, tfDiscountRate, tfDiscountAmount, tfAdvancePRate, tfAdvancePAmount, tfTotalAmount, tfNetAmount;
+    @FXML
+    private TextField tfBarcode, tfDescription, tfBrand, tfModel, tfColor, tfCategory, tfInventoryType,
+            tfMeasure, tfClass, tfAMC, tfROQ, tfRO, tfBO, tfQOH, tfCost, tfRequestQuantity, tfOrderQuantity;
+    @FXML
+    private CheckBox chkbAdvancePayment;
+    @FXML
+    private TextArea taRemarks;
+    @FXML
+    private DatePicker dpTransactionDate, dpExpectedDlvrDate;
+    @FXML
+    private TableView&lt;ModelPurchaseOrderDetail&gt; tblVwOrderDetails;
+    @FXML
+    private TableColumn&lt;ModelPurchaseOrderDetail, String&gt; tblRowNoDetail, tblOrderNoDetail, tblBarcodeDetail,
+            tblDescriptionDetail, tblCostDetail, tblROQDetail, tblRequestQuantityDetail, tblOrderQuantityDetail,
+            tblTotalAmountDetail;
+    
+    @FXML
+    private TableView tblAttachments;
+    @FXML
+    private TableColumn tblRowNoAttachment,tblFileNameAttachment;
+    
+    @FXML
+    private ImageView imageView;
+    
+    @FXML
+    private ComboBox cmbAttachmentType;
+    
+    @FXML
+    private TextField tfAttachmentNo;
+    @FXML
+    private AnchorPane apAttachments;
+    
+    private FileChooser fileChooser;
+    private int pnAttachment;
+    private double mouseAnchorX;
+    private double mouseAnchorY;
+<span class="nc" id="L166">    private double scaleFactor = 1.0;</span>
+<span class="nc" id="L167">    private int currentIndex = 0;</span>
+<span class="nc" id="L168">    double ldstackPaneWidth = 0;</span>
+<span class="nc" id="L169">    double ldstackPaneHeight = 0;</span>
+    @FXML
+    private StackPane stackPane1;
+<span class="nc" id="L172">    private ObservableList&lt;ModelPOAttachment&gt; attachment_data = FXCollections.observableArrayList();</span>
+<span class="nc" id="L173">    ObservableList&lt;String&gt; documentType = ModelPOAttachment.documentType;</span>
+    @FXML
+    private Button  btnAddAttachment, btnRemoveAttachment, btnArrowLeft, btnArrowRight;
+    
+
+
+    @Override
+    public void setGRider(GRiderCAS foValue) {
+<span class="nc" id="L181">        poApp = foValue;</span>
+<span class="nc" id="L182">    }</span>
+
+    @Override
+    public void setIndustryID(String fsValue) {
+<span class="nc" id="L186">        psIndustryID = fsValue;</span>
+<span class="nc" id="L187">    }</span>
+
+    @Override
+    public void setCompanyID(String fsValue) {
+<span class="nc" id="L191">        psCompanyID = fsValue;</span>
+<span class="nc" id="L192">    }</span>
+
+    @Override
+    public void setCategoryID(String fsValue) {
+<span class="nc" id="L196">        psCategoryID = fsValue;</span>
+<span class="nc" id="L197">    }</span>
+
+    /** What the Close button does (e.g. remove the tab); default: close the window. */
+    public void setOnClose(Runnable foOnClose) {
+<span class="nc" id="L201">        poOnClose = foOnClose;</span>
+<span class="nc" id="L202">    }</span>
+
+    /** The General Inventory Purchase Order controller. */
+    private PurchaseOrderGeneral po() {
+<span class="nc" id="L206">        return poPurchasingController.PurchaseOrderGeneral();</span>
+    }
+
+    /**
+     * Initializes the controller class.
+     */
+    @Override
+    public void initialize(URL url, ResourceBundle rb) {
+        try {
+<span class="nc" id="L215">            poPurchasingController = new PurchaseOrderControllers(poApp, logWrapper);</span>
+<span class="nc" id="L216">            po().setTransactionStatus(</span>
+                    PurchaseOrderStatus.OPEN
+                    + PurchaseOrderStatus.CONFIRMED
+                    + PurchaseOrderStatus.RETURNED
+                    + PurchaseOrderStatus.APPROVED
+                    + PurchaseOrderStatus.CANCELLED
+                    + PurchaseOrderStatus.VOID
+                    + PurchaseOrderStatus.RETURNED
+                    + PurchaseOrderStatus.POSTED
+                    + PurchaseOrderStatus.PROCESSED);
+<span class="nc" id="L226">            poJSON = po().InitTransaction();</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (!&quot;success&quot;.equals(poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L228">                ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), psFormName, null);</span>
+            }
+
+<span class="nc" id="L231">            tblVwOrderDetails.addEventFilter(KeyEvent.KEY_PRESSED, this::tableKeyEvents);</span>
+<span class="nc" id="L232">            Platform.runLater((() -&gt; {</span>
+//                psIndustryID = &quot;&quot;;
+<span class="nc" id="L234">                po().Master().setIndustryID(psIndustryID);</span>
+<span class="nc" id="L235">                po().Master().setCompanyID(psCompanyID);</span>
+<span class="nc" id="L236">                po().Master().setCategoryCode(psCategoryID);</span>
+<span class="nc" id="L237">                loadRecordSearch();</span>
+<span class="nc" id="L238">            }));</span>
+<span class="nc" id="L239">            initAll();</span>
+<span class="nc" id="L240">        } catch (ExceptionInInitializerError ex) {</span>
+<span class="nc" id="L241">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L242">        }</span>
+<span class="nc" id="L243">    }</span>
+
+    private void loadRecordSearch() {
+        try {
+<span class="nc" id="L247">            lblSource.setText(po().Master().Company().getCompanyName());</span>
+<span class="nc" id="L248">        } catch (GuanzonException | SQLException ex) {</span>
+<span class="nc" id="L249">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L250">        }</span>
+
+<span class="nc" id="L252">    }</span>
+
+    private void initAll() {
+<span class="nc" id="L255">        initButtonsClickActions();</span>
+<span class="nc" id="L256">        initTextFieldKeyPressed();</span>
+<span class="nc" id="L257">        initScreenKeys();</span>
+<span class="nc" id="L258">        initTextFieldsProperty();</span>
+<span class="nc" id="L259">        initTableDetail();</span>
+<span class="nc" id="L260">        initAttachmentsGrid();</span>
+<span class="nc" id="L261">        initAttachmentPreviewPane();</span>
+<span class="nc" id="L262">        initStackPaneListener();</span>
+<span class="nc" id="L263">        initComboBoxes();</span>
+<span class="nc" id="L264">        tblVwOrderDetails.setOnMouseClicked(this::tblVwDetail_Clicked);</span>
+<span class="nc" id="L265">        pnEditMode = EditMode.UNKNOWN;</span>
+<span class="nc" id="L266">        initButtons(pnEditMode);</span>
+<span class="nc" id="L267">        tblAttachments.setOnMouseClicked(event -&gt; {</span>
+<span class="nc" id="L268">            pnAttachment = tblAttachments.getSelectionModel().getSelectedIndex();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            if (pnAttachment &gt;= 0) {</span>
+<span class="nc" id="L270">                scaleFactor = 1.0;</span>
+<span class="nc" id="L271">                loadRecordAttachment(true);</span>
+<span class="nc" id="L272">                resetImageBounds();</span>
+            }
+<span class="nc" id="L274">        });</span>
+<span class="nc" id="L275">    }</span>
+
+    private void loadRecordMaster() {
+        try {
+<span class="nc" id="L279">            tfTransactionNo.setText(po().Master().getTransactionNo());</span>
+<span class="nc" id="L280">            lblTransactionStatus.setText(po().getStatusValue());</span>
+<span class="nc" id="L281">            dpTransactionDate.setValue(CustomCommonUtil.parseDateStringToLocalDate(SQLUtil.dateFormat(po().Master().getTransactionDate(), SQLUtil.FORMAT_SHORT_DATE)));</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            tfSupplier.setText(po().Master().Supplier().getCompanyName() != null ? po().Master().Supplier().getCompanyName() : &quot;&quot;);</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">            tfDestination.setText(po().Master().Branch().getBranchName() != null ? po().Master().Branch().getBranchName() : &quot;&quot;);</span>
+<span class="nc" id="L284">            tfReferenceNo.setText(po().Master().getReference());</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            tfTerm.setText(po().Master().Term().getDescription() != null ? po().Master().Term().getDescription() : &quot;&quot;);</span>
+<span class="nc" id="L286">            taRemarks.setText(po().Master().getRemarks());</span>
+<span class="nc" id="L287">            dpExpectedDlvrDate.setValue(CustomCommonUtil.parseDateStringToLocalDate(SQLUtil.dateFormat(po().Master().getExpectedDate(), SQLUtil.FORMAT_SHORT_DATE)));</span>
+<span class="nc" id="L288">            tfDiscountRate.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getDiscount().doubleValue()));</span>
+<span class="nc" id="L289">            tfDiscountAmount.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getAdditionalDiscount(), true));</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            chkbAdvancePayment.setSelected(po().Master().getWithAdvPaym() == true);</span>
+<span class="nc" id="L291">            tfAdvancePRate.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getDownPaymentRatesPercentage().doubleValue()));</span>
+<span class="nc" id="L292">            tfAdvancePAmount.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getDownPaymentRatesAmount(), true));</span>
+<span class="nc" id="L293">            tfTotalAmount.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getTranTotal(), true));</span>
+<span class="nc" id="L294">            tfNetAmount.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Master().getNetTotal(), true));</span>
+<span class="nc" id="L295">        } catch (GuanzonException | SQLException ex) {</span>
+<span class="nc" id="L296">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L297">        }</span>
+
+<span class="nc" id="L299">    }</span>
+
+    private void loadRecordDetail() {
+        try {
+<span class="nc bnc" id="L303" title="All 4 branches missed.">            if (pnTblDetailRow &lt; 0 || pnTblDetailRow &gt; po().getDetailCount() - 1) {</span>
+<span class="nc" id="L304">                return;</span>
+            }
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            if (pnTblDetailRow &gt;= 0) {</span>
+<span class="nc" id="L307">                String lsStockId = po().Detail(pnTblDetailRow).getStockID();</span>
+<span class="nc bnc" id="L308" title="All 4 branches missed.">                if (lsStockId == null || lsStockId.isEmpty()) {</span>
+<span class="nc" id="L309">                    clearDetailFields(); //the empty row: nothing to look up</span>
+<span class="nc" id="L310">                    return;</span>
+                }
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                tfBarcode.setText(po().Detail(pnTblDetailRow).Inventory().getBarCode() != null ? po().Detail(pnTblDetailRow).Inventory().getBarCode() : &quot;&quot;);</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">                tfDescription.setText(po().Detail(pnTblDetailRow).Inventory().getDescription() != null ? po().Detail(pnTblDetailRow).Inventory().getDescription() : &quot;&quot;);</span>
+<span class="nc" id="L314">                tfBrand.setText(po().Detail(pnTblDetailRow).Inventory().Brand().getDescription());</span>
+<span class="nc" id="L315">                tfModel.setText(po().Detail(pnTblDetailRow).Inventory().Model().getDescription());</span>
+<span class="nc" id="L316">                tfColor.setText(po().Detail(pnTblDetailRow).Inventory().Color().getDescription());</span>
+<span class="nc" id="L317">                tfCategory.setText(po().Detail(pnTblDetailRow).Inventory().Category().getDescription());</span>
+<span class="nc" id="L318">                tfInventoryType.setText(po().Detail(pnTblDetailRow).Inventory().InventoryType().getDescription());</span>
+<span class="nc" id="L319">                tfMeasure.setText(po().Detail(pnTblDetailRow).Inventory().Measure().getDescription());</span>
+<span class="nc" id="L320">                tfClass.setText(po().Detail(pnTblDetailRow).InventoryMaster().getInventoryClassification());</span>
+<span class="nc" id="L321">                tfAMC.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Detail(pnTblDetailRow).InventoryMaster().getAverageCost()));</span>
+<span class="nc" id="L322">                tfROQ.setText(&quot;0&quot;);</span>
+<span class="nc" id="L323">                double lnRO = 0, lnBO = 0, lnQOH = 0, lnRequestQuantity = 0;</span>
+<span class="nc bnc" id="L324" title="All 3 branches missed.">                switch (po().Detail(pnTblDetailRow).getSouceCode()) {</span>
+                    case PurchaseOrderStatus.SourceCode.STOCKREQUEST:
+<span class="nc" id="L326">                        lnRO = po().Detail(pnTblDetailRow).InvStockRequestDetail().getReceived();</span>
+<span class="nc" id="L327">                        lnBO = po().Detail(pnTblDetailRow).InvStockRequestDetail().getBackOrder();</span>
+<span class="nc" id="L328">                        lnQOH = po().Detail(pnTblDetailRow).InvStockRequestDetail().getQuantityOnHand();</span>
+<span class="nc" id="L329">                        lnRequestQuantity = po().Detail(pnTblDetailRow).InvStockRequestDetail().getApproved();</span>
+<span class="nc" id="L330">                        break;</span>
+                    case PurchaseOrderStatus.SourceCode.POQUOTATION:
+<span class="nc" id="L332">                        lnRO = 0;</span>
+<span class="nc" id="L333">                        lnBO = 0;</span>
+<span class="nc" id="L334">                        lnQOH = 0;</span>
+<span class="nc" id="L335">                        lnRequestQuantity = po().Detail(pnTblDetailRow).POQuotationDetail().getQuantity();</span>
+                        break;
+                }
+<span class="nc" id="L338">                tfRO.setText(CustomCommonUtil.setDecimalValueToIntegerFormat(lnRO));</span>
+<span class="nc" id="L339">                tfBO.setText(CustomCommonUtil.setDecimalValueToIntegerFormat(lnBO));</span>
+<span class="nc" id="L340">                tfQOH.setText(CustomCommonUtil.setDecimalValueToIntegerFormat(lnQOH));</span>
+<span class="nc" id="L341">                tfCost.setText(CustomCommonUtil.setIntegerValueToDecimalFormat(po().Detail(pnTblDetailRow).getUnitPrice().doubleValue(), true));</span>
+<span class="nc" id="L342">                tfRequestQuantity.setText(CustomCommonUtil.setDecimalValueToIntegerFormat(lnRequestQuantity));</span>
+<span class="nc" id="L343">                tfOrderQuantity.setText(String.valueOf(po().Detail(pnTblDetailRow).getQuantity().intValue()));</span>
+            }
+<span class="nc" id="L345">        } catch (GuanzonException | SQLException ex) {</span>
+<span class="nc" id="L346">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L347">        }</span>
+<span class="nc" id="L348">    }</span>
+
+    private void initButtonsClickActions() {
+<span class="nc" id="L351">        List&lt;Button&gt; buttons = Arrays.asList(</span>
+                btnPrint, btnTransHistory, btnClose, btnBrowse,btnHistApproval
+                ,btnAddAttachment, btnRemoveAttachment, btnArrowLeft, btnArrowRight);
+<span class="nc" id="L354">        buttons.forEach(button -&gt; button.setOnAction(this::handleButtonAction));</span>
+<span class="nc" id="L355">    }</span>
+
+    private void handleButtonAction(ActionEvent event) {
+        try {
+
+<span class="nc" id="L360">            poJSON = new JSONObject();</span>
+<span class="nc" id="L361">            String lsButton = ((Button) event.getSource()).getId();</span>
+<span class="nc bnc" id="L362" title="All 10 branches missed.">            switch (lsButton) {</span>
+                case &quot;btnBrowse&quot;:
+<span class="nc" id="L364">                    poJSON = po().SearchTransaction(&quot;&quot;,</span>
+                            psSupplierID,
+                            psReferID,psTransNo,1);
+<span class="nc bnc" id="L367" title="All 2 branches missed.">                    if (&quot;success&quot;.equals((String) poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L368">                        clearDetailFields();</span>
+<span class="nc" id="L369">                        pnTblDetailRow = -1;</span>
+<span class="nc" id="L370">                        loadRecordMaster();</span>
+<span class="nc" id="L371">                        loadRecordDetail();</span>
+<span class="nc" id="L372">                        loadTableDetail();</span>
+<span class="nc" id="L373">                        loadTableAttachment();</span>
+<span class="nc" id="L374">                        loadTableDetailFromMain();                        </span>
+<span class="nc" id="L375">                        pnEditMode = po().getEditMode();</span>
+                    } else {
+<span class="nc" id="L377">                        ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), &quot;Search Information&quot;, null);</span>
+                    }
+<span class="nc" id="L379">                    break;</span>
+                case &quot;btnPrint&quot;:
+<span class="nc" id="L381">                    poJSON = po().printTransaction(PurchaseOrderStaticData.Printing_CARSp_MCSp_General);</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">                    if (!&quot;success&quot;.equals((String) poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L383">                        ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), &quot;Print Purchase Order&quot;, null);</span>
+                    }
+                    break;
+                case &quot;btnTransHistory&quot;:
+<span class="nc bnc" id="L387" title="All 4 branches missed.">                    if (pnEditMode != EditMode.READY &amp;&amp; pnEditMode != EditMode.UPDATE) {</span>
+<span class="nc" id="L388">                        ShowMessageFX.Warning(&quot;No transaction status history to load!&quot;, psFormName, null);</span>
+<span class="nc" id="L389">                        return;</span>
+                    }
+
+                    try {
+<span class="nc" id="L393">                        po().ShowStatusHistory();</span>
+<span class="nc" id="L394">                    } catch (NullPointerException npe) {</span>
+<span class="nc" id="L395">                        Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(npe), npe);</span>
+<span class="nc" id="L396">                        ShowMessageFX.Error(&quot;No transaction status history to load!&quot;, psFormName, null);</span>
+<span class="nc" id="L397">                    } catch (Exception ex) {</span>
+<span class="nc" id="L398">                        Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="nc" id="L399">                        ShowMessageFX.Error(MiscUtil.getException(ex), psFormName, null);</span>
+<span class="nc" id="L400">                    }</span>
+<span class="nc" id="L401">                    break;</span>
+                case &quot;btnClose&quot;:
+<span class="nc bnc" id="L403" title="All 2 branches missed.">                    if (ShowMessageFX.YesNo(&quot;Are you sure you want to close this form?&quot;, psFormName, null)) {</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">                        if (poOnClose != null) {</span>
+<span class="nc" id="L405">                            poOnClose.run();</span>
+                        } else {
+<span class="nc" id="L407">                            ((Stage) AnchorMain.getScene().getWindow()).close();</span>
+                        }
+                    }
+                    break;
+                case &quot;btnHistApproval&quot;:
+<span class="nc bnc" id="L412" title="All 4 branches missed.">                    if (pnEditMode != EditMode.READY &amp;&amp; pnEditMode != EditMode.UPDATE) {</span>
+<span class="nc" id="L413">                        ShowMessageFX.Warning(&quot;No Approval history to load!&quot;, psFormName, null);</span>
+<span class="nc" id="L414">                        return;</span>
+                    }
+<span class="nc" id="L416">                    po().ShowApprovalHistory();</span>
+<span class="nc" id="L417">                    break;</span>
+                case &quot;btnAddAttachment&quot;:
+<span class="nc" id="L419">                    fileChooser = new FileChooser();</span>
+<span class="nc" id="L420">                    fileChooser.setTitle(&quot;Choose Image&quot;);</span>
+<span class="nc" id="L421">                    fileChooser.getExtensionFilters().addAll(</span>
+                            new FileChooser.ExtensionFilter(&quot;Image Files&quot;, &quot;*.png&quot;, &quot;*.jpg&quot;, &quot;*.gif&quot;, &quot;*.pdf&quot;)
+                    );
+<span class="nc" id="L424">                    java.io.File selectedFile = fileChooser.showOpenDialog((Stage) btnAddAttachment.getScene().getWindow());</span>
+
+<span class="nc bnc" id="L426" title="All 2 branches missed.">                    if (selectedFile != null) {</span>
+                        // Read image from the selected file
+<span class="nc" id="L428">                        Path imgPath = selectedFile.toPath();</span>
+<span class="nc" id="L429">                        Image loimage = new Image(Files.newInputStream(imgPath));</span>
+<span class="nc" id="L430">                        imageView.setImage(loimage);</span>
+
+                        //Validate attachment
+<span class="nc" id="L433">                        String imgPath2 = selectedFile.getName().toString();</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                        for (int lnCtr = 0; lnCtr &lt;= po().getTransactionAttachmentCount() - 1; lnCtr++) {</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">                            if (imgPath2.equals(po().TransactionAttachmentList(lnCtr).getModel().getFileName())</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">                                    &amp;&amp; RecordStatus.ACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {</span>
+<span class="nc" id="L437">                                ShowMessageFX.Warning(null, psFormName, &quot;File name already exists.&quot;);</span>
+<span class="nc" id="L438">                                pnAttachment = lnCtr;</span>
+<span class="nc" id="L439">                                loadRecordAttachment(true);</span>
+<span class="nc" id="L440">                                return;</span>
+                            }
+                        }
+
+                        //Limit maximum pages of pdf to add
+<span class="nc bnc" id="L445" title="All 2 branches missed.">                        if (imgPath2.toLowerCase().endsWith(&quot;.pdf&quot;)) {</span>
+<span class="nc" id="L446">                            try (PDDocument document = PDDocument.load(selectedFile)) {</span>
+<span class="nc" id="L447">                                PDFRenderer pdfRenderer = new PDFRenderer(document);</span>
+<span class="nc" id="L448">                                int pageCount = document.getNumberOfPages();</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">                                if (pageCount &gt; 20) {</span>
+<span class="nc" id="L450">                                    ShowMessageFX.Warning(null, psFormName, &quot;PDF exceeds maximum allowed pages.&quot;);</span>
+<span class="nc" id="L451">                                    return;</span>
+                                }
+                            }
+                        }
+
+//                            int lnTempRow = JFXUtil.getDetailTempRow(attachment_data,  po().addAttachment(imgPath2), 3);
+//                            pnAttachment = lnTempRow;
+<span class="nc" id="L458">                        pnAttachment = po().addAttachment(imgPath2);</span>
+                        //Copy file to Attachment path
+<span class="nc" id="L460">                        po().copyFile(selectedFile.toString());</span>
+<span class="nc" id="L461">                        loadTableAttachment();</span>
+<span class="nc" id="L462">                        tblAttachments.getFocusModel().focus(pnAttachment);</span>
+<span class="nc" id="L463">                        tblAttachments.getSelectionModel().select(pnAttachment);</span>
+<span class="nc" id="L464">                    }</span>
+                    break;
+                case &quot;btnRemoveAttachment&quot;:
+<span class="nc bnc" id="L467" title="All 2 branches missed.">                    if (po().getTransactionAttachmentCount() &lt;= 0) {</span>
+<span class="nc" id="L468">                        return;</span>
+                    } else {
+<span class="nc bnc" id="L470" title="All 2 branches missed.">                        for (int lnCtr = 0; lnCtr &lt; po().getTransactionAttachmentCount(); lnCtr++) {</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">                            if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">                                if (pnAttachment == lnCtr) {</span>
+<span class="nc" id="L473">                                    return;</span>
+                                }
+                            }
+                        }
+                    }
+<span class="nc" id="L478">                    poJSON = po().removeAttachment(pnAttachment);</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">                    if (&quot;error&quot;.equals((String) poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L480">                        ShowMessageFX.Warning(null, psFormName, (String) poJSON.get(&quot;message&quot;));</span>
+<span class="nc" id="L481">                        return;</span>
+                    }
+<span class="nc" id="L483">                    attachment_data.remove(tblAttachments.getSelectionModel().getSelectedIndex());</span>
+<span class="nc bnc" id="L484" title="All 2 branches missed.">                    if (pnAttachment != 0) {</span>
+<span class="nc" id="L485">                        pnAttachment -= 1;</span>
+                    }
+<span class="nc" id="L487">                    loadRecordAttachment(false);</span>
+<span class="nc" id="L488">                    loadTableAttachment();</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">                    if (attachment_data.size() &lt;= 0) {</span>
+<span class="nc" id="L490">                        JFXUtil.clearTextFields(apAttachments);</span>
+                    }
+<span class="nc" id="L492">                    initAttachmentsGrid();</span>
+<span class="nc" id="L493">                    break;</span>
+                case &quot;btnArrowLeft&quot;:
+<span class="nc" id="L495">                    slideImage(-1);</span>
+<span class="nc" id="L496">                    break;</span>
+                case &quot;btnArrowRight&quot;:
+<span class="nc" id="L498">                    slideImage(1);</span>
+<span class="nc" id="L499">                    break;</span>
+                default:
+<span class="nc" id="L501">                    ShowMessageFX.Warning(&quot;Please contact admin to assist about no button available&quot;, psFormName, null);</span>
+                    break;
+            }
+<span class="nc bnc" id="L504" title="All 6 branches missed.">            if (lsButton.equals(&quot;btnRetrieve&quot;) || lsButton.equals(&quot;btnAddAttachment&quot;) || lsButton.equals(&quot;btnRemoveAttachment&quot;)</span>
+<span class="nc bnc" id="L505" title="All 8 branches missed.">                    || lsButton.equals(&quot;btnArrowRight&quot;) || lsButton.equals(&quot;btnArrowLeft&quot;) || lsButton.equals(&quot;btnRetrieve&quot;) || lsButton.equals(&quot;btnHistory&quot;)) {</span>
+            } else {
+<span class="nc" id="L507">                loadRecordMaster();</span>
+<span class="nc" id="L508">                loadTableDetail();</span>
+<span class="nc" id="L509">                loadTableAttachment();</span>
+            }
+<span class="nc" id="L511">            initButtons(pnEditMode);</span>
+<span class="nc" id="L512">        } catch (CloneNotSupportedException | SQLException | GuanzonException ex) {</span>
+<span class="nc" id="L513">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L514">        } catch (Exception ex) {</span>
+<span class="nc" id="L515">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L516">        }</span>
+<span class="nc" id="L517">    }</span>
+
+    /** Searchable-field marks and button shortcuts (view only: nothing to save). */
+    private void initScreenKeys() {
+<span class="nc" id="L521">        SearchFields.mark(tfSearchSupplier, tfSearchReferenceNo, tfSearchTransNo);</span>
+<span class="nc" id="L522">        ScreenShortcuts.tabOutOf(taRemarks);</span>
+<span class="nc" id="L523">        ScreenShortcuts.on(AnchorMain)</span>
+<span class="nc" id="L524">                .add(btnBrowse, &quot;Shortcut+O&quot;)</span>
+<span class="nc" id="L525">                .add(btnPrint, &quot;Shortcut+P&quot;);</span>
+<span class="nc" id="L526">    }</span>
+
+    private void initTextFieldKeyPressed() {
+<span class="nc" id="L529">        List&lt;TextField&gt; loTxtField = Arrays.asList(tfSearchSupplier,</span>
+                tfSearchReferenceNo,tfSearchTransNo);
+
+<span class="nc" id="L532">        loTxtField.forEach(tf -&gt; tf.setOnKeyPressed(event -&gt; txtField_KeyPressed(event)));</span>
+<span class="nc" id="L533">    }</span>
+
+    /**
+     * Whether the field still shows the record that is loaded (its id is set
+     * and the text is what the screen displays for it), so Enter needs no search.
+     */
+    private boolean isLoadedValue(String fsFieldId, String fsText) throws SQLException, GuanzonException {
+<span class="nc bnc" id="L540" title="All 4 branches missed.">        if (fsText == null || fsText.trim().isEmpty()) {</span>
+<span class="nc" id="L541">            return false;</span>
+        }
+        String lsLoaded;
+<span class="nc bnc" id="L544" title="All 2 branches missed.">        switch (fsFieldId) {</span>
+            case &quot;tfSearchSupplier&quot;:
+<span class="nc bnc" id="L546" title="All 2 branches missed.">                lsLoaded = isEmpty(psSupplierID) ? null : psSupplierName;</span>
+<span class="nc" id="L547">                break;</span>
+            default:
+<span class="nc" id="L549">                return false;</span>
+        }
+<span class="nc bnc" id="L551" title="All 6 branches missed.">        return lsLoaded != null &amp;&amp; !lsLoaded.isEmpty() &amp;&amp; fsText.trim().equals(lsLoaded.trim());</span>
+    }
+
+    private static boolean isEmpty(String fsValue) {
+<span class="nc bnc" id="L555" title="All 4 branches missed.">        return fsValue == null || fsValue.isEmpty();</span>
+    }
+
+    /** Fields whose Enter / F3 opens a search (Tab only moves on). */
+    private static boolean isSearchField(String fsFieldId) {
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        switch (fsFieldId) {</span>
+            case &quot;tfSearchSupplier&quot;:
+            case &quot;tfSearchReferenceNo&quot;:
+            case &quot;tfSearchTransNo&quot;:
+<span class="nc" id="L564">                return true;</span>
+            default:
+<span class="nc" id="L566">                return false;</span>
+        }
+    }
+
+    private void txtField_KeyPressed(KeyEvent event) {
+<span class="nc" id="L571">        TextField lsTxtField = (TextField) event.getSource();</span>
+<span class="nc" id="L572">        String txtFieldID = ((TextField) event.getSource()).getId();</span>
+<span class="nc" id="L573">        String lsValue = &quot;&quot;;</span>
+<span class="nc bnc" id="L574" title="All 2 branches missed.">        if (lsTxtField.getText() == null) {</span>
+<span class="nc" id="L575">            lsValue = &quot;&quot;;</span>
+        } else {
+<span class="nc" id="L577">            lsValue = lsTxtField.getText();</span>
+        }
+<span class="nc" id="L579">        poJSON = new JSONObject();</span>
+        try {
+<span class="nc bnc" id="L581" title="All 2 branches missed.">            if (null != event.getCode()) {</span>
+<span class="nc bnc" id="L582" title="All 4 branches missed.">                switch (event.getCode()) {</span>
+                    case TAB:
+                    case ENTER:
+                    case F3:
+                        //Tab only moves to the next field; Enter and F3 open the search
+<span class="nc bnc" id="L587" title="All 4 branches missed.">                        if (event.getCode() == TAB &amp;&amp; isSearchField(txtFieldID)) {</span>
+<span class="nc" id="L588">                            CommonUtils.SetNextFocus(lsTxtField);</span>
+<span class="nc" id="L589">                            event.consume();</span>
+<span class="nc" id="L590">                            break;</span>
+                        }
+                        //Enter on a field still showing its loaded record (unique id present): no search, move on.
+                        //F3 always searches.
+<span class="nc bnc" id="L594" title="All 6 branches missed.">                        if (event.getCode() == ENTER &amp;&amp; isSearchField(txtFieldID) &amp;&amp; isLoadedValue(txtFieldID, lsValue)) {</span>
+<span class="nc" id="L595">                            CommonUtils.SetNextFocus(lsTxtField);</span>
+<span class="nc" id="L596">                            event.consume();</span>
+<span class="nc" id="L597">                            break;</span>
+                        }
+<span class="nc bnc" id="L599" title="All 4 branches missed.">                        switch (txtFieldID) {</span>
+                            case &quot;tfSearchSupplier&quot;:
+<span class="nc" id="L601">                                poJSON = po().SearchSupplier(lsValue, false);</span>
+<span class="nc bnc" id="L602" title="All 2 branches missed.">                                if (&quot;error&quot;.equals(poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L603">                                    ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), psFormName, null);</span>
+<span class="nc" id="L604">                                    tfSearchSupplier.setText(&quot;&quot;);</span>
+<span class="nc" id="L605">                                    break;</span>
+                                }
+<span class="nc" id="L607">                                psSupplierID = po().Master().getSupplierID();</span>
+<span class="nc" id="L608">                                tfSearchSupplier.setText(po().Master().Supplier().getCompanyName());</span>
+<span class="nc" id="L609">                                psSupplierName = tfSearchSupplier.getText();</span>
+<span class="nc" id="L610">                                break;</span>
+                            case &quot;tfSearchReferenceNo&quot;:
+<span class="nc" id="L612">                                psReferID = lsValue;</span>
+<span class="nc" id="L613">                                poJSON = po().SearchTransaction(psReferID,</span>
+                                        psSupplierID,
+                                        psReferID,psTransNo,2);
+<span class="nc bnc" id="L616" title="All 2 branches missed.">                                if (&quot;success&quot;.equals((String) poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L617">                                    clearDetailFields();</span>
+<span class="nc" id="L618">                                    pnTblDetailRow = -1;</span>
+<span class="nc" id="L619">                                    loadRecordMaster();</span>
+<span class="nc" id="L620">                                    loadRecordDetail();</span>
+<span class="nc" id="L621">                                    loadTableDetail();</span>
+<span class="nc" id="L622">                                    tfSearchReferenceNo.clear();</span>
+<span class="nc" id="L623">                                    pnEditMode = po().getEditMode();</span>
+                                } else {
+<span class="nc" id="L625">                                    ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), &quot;Search Information&quot;, null);</span>
+                                }
+<span class="nc" id="L627">                                break;</span>
+                            case &quot;tfSearchTransNo&quot;:
+<span class="nc" id="L629">                                psTransNo = lsValue;</span>
+<span class="nc" id="L630">                                poJSON = po().SearchTransaction(psTransNo,</span>
+                                        psSupplierID,
+                                        psReferID,psTransNo,1);
+<span class="nc bnc" id="L633" title="All 2 branches missed.">                                if (&quot;success&quot;.equals((String) poJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L634">                                    clearDetailFields();</span>
+<span class="nc" id="L635">                                    pnTblDetailRow = -1;</span>
+<span class="nc" id="L636">                                    loadRecordMaster();</span>
+<span class="nc" id="L637">                                    loadRecordDetail();</span>
+<span class="nc" id="L638">                                    loadTableDetail();</span>
+<span class="nc" id="L639">                                    tfSearchTransNo.clear();</span>
+<span class="nc" id="L640">                                    pnEditMode = po().getEditMode();</span>
+                                } else {
+<span class="nc" id="L642">                                    ShowMessageFX.Warning((String) poJSON.get(&quot;message&quot;), &quot;Search Information&quot;, null);</span>
+                                }
+                                break;
+                        }
+<span class="nc" id="L646">                        event.consume();</span>
+<span class="nc" id="L647">                        CommonUtils.SetNextFocus((TextField) event.getSource());</span>
+<span class="nc" id="L648">                        break;</span>
+                    case UP:
+<span class="nc" id="L650">                        event.consume();</span>
+<span class="nc" id="L651">                        CommonUtils.SetPreviousFocus((TextField) event.getSource());</span>
+<span class="nc" id="L652">                        break;</span>
+                    case DOWN:
+<span class="nc" id="L654">                        event.consume();</span>
+<span class="nc" id="L655">                        CommonUtils.SetNextFocus((TextField) event.getSource());</span>
+<span class="nc" id="L656">                        break;</span>
+                    default:
+                        break;
+                }
+            }
+<span class="nc" id="L661">        } catch (ExceptionInInitializerError | SQLException | GuanzonException | CloneNotSupportedException ex) {</span>
+<span class="nc" id="L662">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L663">        }</span>
+<span class="nc" id="L664">    }</span>
+
+    private void clearDetailFields() {
+        /* Detail Fields*/
+<span class="nc" id="L668">        CustomCommonUtil.setText(&quot;&quot;, tfBarcode, tfDescription, tfBrand, tfModel,</span>
+                tfColor, tfCategory, tfInventoryType, tfMeasure, tfClass,
+                tfAMC, tfROQ, tfRO, tfBO, tfQOH,
+                tfCost, tfRequestQuantity, tfOrderQuantity);
+<span class="nc" id="L672">    }</span>
+
+    private void initButtons(int fnEditMode) {
+<span class="nc" id="L675">        btnPrint.setVisible(false);</span>
+<span class="nc" id="L676">        btnPrint.setManaged(false);</span>
+<span class="nc bnc" id="L677" title="All 2 branches missed.">        btnTransHistory.setVisible(fnEditMode != EditMode.UNKNOWN);</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">        btnTransHistory.setManaged(fnEditMode != EditMode.UNKNOWN);</span>
+<span class="nc bnc" id="L679" title="All 2 branches missed.">        btnHistApproval.setVisible(fnEditMode == EditMode.READY);</span>
+<span class="nc bnc" id="L680" title="All 2 branches missed.">        btnHistApproval.setManaged(fnEditMode == EditMode.READY);</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">        if (po().Master().getPrint().equals(&quot;1&quot;)) {</span>
+<span class="nc" id="L682">            btnPrint.setText(&quot;Reprint&quot;);</span>
+        } else {
+<span class="nc" id="L684">            btnPrint.setText(&quot;Print&quot;);</span>
+        }
+<span class="nc bnc" id="L686" title="All 2 branches missed.">        if (fnEditMode == EditMode.READY) {</span>
+<span class="nc bnc" id="L687" title="All 2 branches missed.">            switch (po().Master().getConvertedTransactionStatus()) {</span>
+                case PurchaseOrderStatus.OPEN:
+                case PurchaseOrderStatus.APPROVED:
+                case PurchaseOrderStatus.CONFIRMED:
+<span class="nc" id="L691">                    btnPrint.setVisible(true);</span>
+<span class="nc" id="L692">                    btnPrint.setManaged(true);</span>
+                    break;
+            }
+        }
+<span class="nc" id="L696">    }</span>
+
+    private void loadTableDetail() {
+<span class="nc" id="L699">        ProgressIndicator progressIndicator = new ProgressIndicator();</span>
+<span class="nc" id="L700">        progressIndicator.setMaxSize(50, 50);</span>
+<span class="nc" id="L701">        progressIndicator.setStyle(&quot;-fx-accent: #FF8201;&quot;);</span>
+
+<span class="nc" id="L703">        StackPane loadingPane = new StackPane(progressIndicator);</span>
+<span class="nc" id="L704">        loadingPane.setAlignment(Pos.CENTER);</span>
+<span class="nc" id="L705">        loadingPane.setStyle(&quot;-fx-background-color: transparent;&quot;);</span>
+
+<span class="nc" id="L707">        detail_data.clear();</span>
+<span class="nc" id="L708">        tblVwOrderDetails.setPlaceholder(loadingPane);</span>
+<span class="nc" id="L709">        progressIndicator.setVisible(true);</span>
+
+<span class="nc" id="L711">        Task&lt;List&lt;ModelPurchaseOrderDetail&gt;&gt; task = new Task&lt;List&lt;ModelPurchaseOrderDetail&gt;&gt;() {</span>
+            @Override
+            protected List&lt;ModelPurchaseOrderDetail&gt; call() throws Exception {
+                try {
+<span class="nc" id="L715">                    int detailCount = po().getDetailCount();</span>
+<span class="nc" id="L716">                    List&lt;ModelPurchaseOrderDetail&gt; detailsList = new ArrayList&lt;&gt;();</span>
+
+<span class="nc bnc" id="L718" title="All 2 branches missed.">                    for (int lnCtr = 0; lnCtr &lt; detailCount; lnCtr++) {</span>
+<span class="nc" id="L719">                        Model_PO_Detail orderDetail = po().Detail(lnCtr);</span>
+<span class="nc" id="L720">                        double lnTotalAmount = orderDetail.getUnitPrice().doubleValue() * orderDetail.getQuantity().intValue();</span>
+<span class="nc" id="L721">                        double lnRequestQuantity = 0;</span>
+<span class="nc" id="L722">                        String status = &quot;0&quot;;</span>
+<span class="nc" id="L723">                        double lnTotalQty = 0.0000;</span>
+<span class="nc bnc" id="L724" title="All 3 branches missed.">                        switch (po().Detail(lnCtr).getSouceCode()) {</span>
+                            case PurchaseOrderStatus.SourceCode.STOCKREQUEST:
+<span class="nc" id="L726">                                lnRequestQuantity = po().Detail(lnCtr).InvStockRequestDetail().getApproved();</span>
+<span class="nc" id="L727">                                lnTotalQty = (po().Detail(lnCtr).InvStockRequestDetail().getPurchase()</span>
+<span class="nc" id="L728">                                        + po().Detail(lnCtr).InvStockRequestDetail().getIssued()</span>
+<span class="nc" id="L729">                                        + po().Detail(lnCtr).InvStockRequestDetail().getCancelled());</span>
+<span class="nc bnc" id="L730" title="All 2 branches missed.">                                if (!po().Detail(lnCtr).getSouceNo().isEmpty()) {</span>
+<span class="nc bnc" id="L731" title="All 2 branches missed.">                                    if (lnRequestQuantity != lnTotalQty) {</span>
+<span class="nc" id="L732">                                        status = &quot;1&quot;;</span>
+                                    }
+                                }
+                                break;
+                            case PurchaseOrderStatus.SourceCode.POQUOTATION:
+<span class="nc" id="L737">                                lnRequestQuantity = po().Detail(lnCtr).POQuotationDetail().getQuantity();</span>
+                                break;
+                        }
+<span class="nc" id="L740">                        detailsList.add(new ModelPurchaseOrderDetail(</span>
+<span class="nc" id="L741">                                String.valueOf(lnCtr + 1),</span>
+<span class="nc" id="L742">                                orderDetail.getSouceNo(),</span>
+<span class="nc" id="L743">                                orderDetail.Inventory().getBarCode(),</span>
+<span class="nc" id="L744">                                orderDetail.Inventory().getDescription(),</span>
+<span class="nc" id="L745">                                CustomCommonUtil.setIntegerValueToDecimalFormat(orderDetail.getUnitPrice(), true),</span>
+                                        &quot;0&quot;,
+<span class="nc" id="L747">                                CustomCommonUtil.setDecimalValueToIntegerFormat(lnRequestQuantity),</span>
+<span class="nc" id="L748">                                CustomCommonUtil.setDecimalValueToIntegerFormat(orderDetail.getQuantity().intValue()),</span>
+<span class="nc" id="L749">                                CustomCommonUtil.setIntegerValueToDecimalFormat(lnTotalAmount, true),</span>
+                                status
+                        ));
+                    }
+<span class="nc" id="L753">                    Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L754">                        detail_data.setAll(detailsList); // Properly update list</span>
+<span class="nc" id="L755">                        tblVwOrderDetails.setItems(detail_data);</span>
+<span class="nc" id="L756">                    });</span>
+
+<span class="nc" id="L758">                    return detailsList;</span>
+
+<span class="nc" id="L760">                } catch (GuanzonException | SQLException ex) {</span>
+<span class="nc" id="L761">                    Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L762">                    return null;</span>
+                }
+            }
+
+            @Override
+            protected void succeeded() {
+<span class="nc" id="L768">                progressIndicator.setVisible(false);</span>
+<span class="nc" id="L769">            }</span>
+
+            @Override
+            protected void failed() {
+<span class="nc" id="L773">                progressIndicator.setVisible(false);</span>
+<span class="nc" id="L774">            }</span>
+        };
+
+        //Runs on the JavaFX thread: the PO detail models are not thread-safe
+        //and the screen reads them at the same time (loadRecordDetail).
+<span class="nc" id="L779">        task.run();</span>
+<span class="nc" id="L780">    }</span>
+
+    private void initTableDetail() {
+<span class="nc" id="L783">        JFXUtil.setColumnCenter(tblRowNoDetail, tblOrderNoDetail);</span>
+<span class="nc" id="L784">        JFXUtil.setColumnLeft(tblBarcodeDetail, tblDescriptionDetail);</span>
+<span class="nc" id="L785">        JFXUtil.setColumnRight(tblCostDetail, tblRequestQuantityDetail, tblOrderQuantityDetail, tblTotalAmountDetail, tblROQDetail);</span>
+<span class="nc" id="L786">        JFXUtil.setColumnsIndexAndDisableReordering(tblVwOrderDetails);</span>
+<span class="nc" id="L787">        initTableHighlithers();</span>
+
+<span class="nc" id="L789">    }</span>
+
+    private void initTableHighlithers() {
+<span class="nc" id="L792">        tblVwOrderDetails.setRowFactory(tv -&gt; new TableRow&lt;ModelPurchaseOrderDetail&gt;() {</span>
+            @Override
+            protected void updateItem(ModelPurchaseOrderDetail item, boolean empty) {
+<span class="nc" id="L795">                super.updateItem(item, empty);</span>
+
+<span class="nc bnc" id="L797" title="All 4 branches missed.">                if (item == null || empty) {</span>
+<span class="nc" id="L798">                    setStyle(&quot;&quot;);</span>
+                } else {
+<span class="nc" id="L800">                    String status = item.getIndex10(); // Replace with actual getter</span>
+<span class="nc bnc" id="L801" title="All 2 branches missed.">                    switch (status) {</span>
+                        case &quot;1&quot;:
+<span class="nc" id="L803">                            setStyle(&quot;-fx-background-color: #FAA0A0;&quot;);</span>
+<span class="nc" id="L804">                            break;</span>
+                        default:
+<span class="nc" id="L806">                            setStyle(&quot;&quot;);</span>
+                    }
+<span class="nc" id="L808">                    tblVwOrderDetails.refresh();</span>
+                }
+<span class="nc" id="L810">            }</span>
+        });
+<span class="nc" id="L812">    }</span>
+
+    private void tblVwDetail_Clicked(MouseEvent event) {
+<span class="nc bnc" id="L815" title="All 2 branches missed.">        if (pnEditMode == EditMode.READY) {</span>
+<span class="nc" id="L816">            pnTblDetailRow = tblVwOrderDetails.getSelectionModel().getSelectedIndex();</span>
+
+<span class="nc" id="L818">            ModelPurchaseOrderDetail selectedItem = tblVwOrderDetails.getSelectionModel().getSelectedItem();</span>
+<span class="nc bnc" id="L819" title="All 2 branches missed.">            if (event.getClickCount() == 1) {</span>
+<span class="nc" id="L820">                clearDetailFields();</span>
+<span class="nc bnc" id="L821" title="All 2 branches missed.">                if (selectedItem != null) {</span>
+<span class="nc bnc" id="L822" title="All 2 branches missed.">                    if (pnTblDetailRow &gt;= 0) {</span>
+<span class="nc" id="L823">                        loadRecordDetail();</span>
+                    }
+                }
+            }
+        }
+<span class="nc" id="L828">    }</span>
+
+    private int moveToNextRow(TableView&lt;?&gt; table, TablePosition&lt;?, ?&gt; focusedCell) {
+<span class="nc bnc" id="L831" title="All 2 branches missed.">        if (table.getItems().isEmpty()) {</span>
+<span class="nc" id="L832">            return -1; // No movement possible</span>
+        }
+<span class="nc" id="L834">        int nextRow = (focusedCell.getRow() + 1) % table.getItems().size();</span>
+<span class="nc" id="L835">        table.getSelectionModel().select(nextRow);</span>
+<span class="nc" id="L836">        return nextRow;</span>
+    }
+
+    private int moveToPreviousRow(TableView&lt;?&gt; table, TablePosition&lt;?, ?&gt; focusedCell) {
+<span class="nc bnc" id="L840" title="All 2 branches missed.">        if (table.getItems().isEmpty()) {</span>
+<span class="nc" id="L841">            return -1; // No movement possible</span>
+        }
+<span class="nc" id="L843">        int previousRow = (focusedCell.getRow() - 1 + table.getItems().size()) % table.getItems().size();</span>
+<span class="nc" id="L844">        table.getSelectionModel().select(previousRow);</span>
+<span class="nc" id="L845">        return previousRow;</span>
+    }
+
+    private void tableKeyEvents(KeyEvent event) {
+<span class="nc" id="L849">        TableView&lt;?&gt; currentTable = (TableView&lt;?&gt;) event.getSource();</span>
+<span class="nc" id="L850">        TablePosition&lt;?, ?&gt; focusedCell = currentTable.getFocusModel().getFocusedCell();</span>
+<span class="nc bnc" id="L851" title="All 2 branches missed.">        if (focusedCell != null) {</span>
+<span class="nc bnc" id="L852" title="All 2 branches missed.">            if (&quot;tblVwOrderDetails&quot;.equals(currentTable.getId())) {</span>
+<span class="nc bnc" id="L853" title="All 3 branches missed.">                switch (event.getCode()) {</span>
+                    case TAB:
+                    case DOWN:
+<span class="nc" id="L856">                        pnTblDetailRow = moveToNextRow(currentTable, focusedCell);</span>
+<span class="nc" id="L857">                        break;</span>
+                    case UP:
+<span class="nc" id="L859">                        pnTblDetailRow = moveToPreviousRow(currentTable, focusedCell);</span>
+<span class="nc" id="L860">                        break;</span>
+                    default:
+<span class="nc" id="L862">                        return; // Ignore other keys</span>
+                }
+
+<span class="nc" id="L865">                loadRecordDetail();</span>
+<span class="nc" id="L866">                event.consume();</span>
+            }
+
+        }
+<span class="nc" id="L870">    }</span>
+
+    private void initTextFieldsProperty() {
+<span class="nc" id="L873">        tfSearchSupplier.textProperty().addListener((observable, oldValue, newValue) -&gt; {</span>
+<span class="nc bnc" id="L874" title="All 2 branches missed.">            if (newValue != null) {</span>
+<span class="nc bnc" id="L875" title="All 2 branches missed.">                if (newValue.isEmpty()) {</span>
+<span class="nc" id="L876">                    po().Master().setSupplierID(&quot;&quot;);</span>
+<span class="nc" id="L877">                    po().Master().setAddressID(&quot;&quot;);</span>
+<span class="nc" id="L878">                    po().Master().setContactID(&quot;&quot;);</span>
+<span class="nc" id="L879">                    tfSearchSupplier.setText(&quot;&quot;);</span>
+<span class="nc" id="L880">                    psSupplierID = &quot;&quot;;</span>
+                }
+
+            }
+<span class="nc" id="L884">        });</span>
+<span class="nc" id="L885">        tfSearchReferenceNo.textProperty().addListener((observable, oldValue, newValue) -&gt; {</span>
+<span class="nc bnc" id="L886" title="All 2 branches missed.">            if (newValue != null) {</span>
+<span class="nc bnc" id="L887" title="All 2 branches missed.">                if (newValue.isEmpty()) {</span>
+<span class="nc" id="L888">                    po().Master().setReference(&quot;&quot;);</span>
+<span class="nc" id="L889">                    tfSearchReferenceNo.setText(&quot;&quot;);</span>
+<span class="nc" id="L890">                    psReferID = &quot;&quot;;</span>
+                }
+            }
+<span class="nc" id="L893">        });</span>
+<span class="nc" id="L894">    }</span>
+    
+    /**
+     * Attachment list. Built on the screen thread: the background task only
+     * reset the image view (a screen control, which must not be changed off the
+     * screen thread) and handed the rest back to the screen thread anyway.
+     * Errors are logged now (they were silently ignored).
+     */
+    private void loadTableAttachment() {
+<span class="nc" id="L903">        scaleFactor = 1.0;</span>
+<span class="nc" id="L904">        JFXUtil.resetImageBounds(imageView, stackPane1);</span>
+<span class="nc" id="L905">        attachment_data.clear();</span>
+        try {
+<span class="nc" id="L907">            int lnCount = 0;</span>
+<span class="nc bnc" id="L908" title="All 2 branches missed.">            for (int lnCtr = 0; lnCtr &lt; po().getTransactionAttachmentCount(); lnCtr++) {</span>
+<span class="nc bnc" id="L909" title="All 2 branches missed.">                if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {</span>
+<span class="nc" id="L910">                    continue;</span>
+                }
+<span class="nc" id="L912">                lnCount += 1;</span>
+<span class="nc" id="L913">                attachment_data.add(new ModelPOAttachment(String.valueOf(lnCount),</span>
+<span class="nc" id="L914">                        String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),</span>
+<span class="nc" id="L915">                        String.valueOf(lnCtr)));</span>
+            }
+<span class="nc" id="L917">            int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied</span>
+<span class="nc bnc" id="L918" title="All 4 branches missed.">            if (lnTempRow &lt; 0 || lnTempRow &gt;= attachment_data.size()) {</span>
+<span class="nc bnc" id="L919" title="All 2 branches missed.">                if (!attachment_data.isEmpty()) {</span>
+                    /* FOCUS ON FIRST ROW */
+<span class="nc" id="L921">                    JFXUtil.selectAndFocusRow(tblAttachments, 0);</span>
+<span class="nc" id="L922">                    pnAttachment = Integer.parseInt(attachment_data.get(0).getIndex03());</span>
+<span class="nc" id="L923">                    loadRecordAttachment(true);</span>
+                }
+            } else {
+                /* FOCUS ON THE ROW THAT pnAttachment POINTS TO */
+<span class="nc" id="L927">                JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);</span>
+<span class="nc" id="L928">                pnAttachment = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());</span>
+<span class="nc" id="L929">                loadRecordAttachment(true);</span>
+            }
+<span class="nc bnc" id="L931" title="All 2 branches missed.">            if (attachment_data.isEmpty()) {</span>
+<span class="nc" id="L932">                loadRecordAttachment(false);</span>
+            }
+<span class="nc" id="L934">        } catch (Exception ex) {</span>
+<span class="nc" id="L935">            Logger.getLogger(PurchaseOrderGeneral_HistoryController.class.getName()).log(Level.SEVERE, &quot;Unable to load the attachments&quot;, ex);</span>
+<span class="nc" id="L936">        }</span>
+
+<span class="nc bnc" id="L938" title="All 2 branches missed.">        if (attachment_data.isEmpty()) {</span>
+<span class="nc" id="L939">            Label loPlaceholder = new Label(&quot;NO RECORD TO LOAD&quot;);</span>
+<span class="nc" id="L940">            loPlaceholder.setStyle(&quot;-fx-font-size: 10px;&quot;);</span>
+<span class="nc" id="L941">            tblAttachments.setPlaceholder(loPlaceholder);</span>
+<span class="nc" id="L942">        } else {</span>
+<span class="nc" id="L943">            tblAttachments.toFront();</span>
+        }
+<span class="nc" id="L945">    }</span>
+
+    public void loadRecordAttachment(boolean lbloadImage) {
+        try {
+<span class="nc bnc" id="L949" title="All 4 branches missed.">            boolean lbShow2 = pnEditMode == EditMode.UPDATE || pnEditMode == EditMode.ADDNEW;</span>
+<span class="nc bnc" id="L950" title="All 2 branches missed.">            JFXUtil.setDisabled(!lbShow2, cmbAttachmentType, btnAddAttachment, btnRemoveAttachment);</span>
+<span class="nc bnc" id="L951" title="All 2 branches missed.">            if (attachment_data.size() &gt; 0) {</span>
+<span class="nc" id="L952">                tfAttachmentNo.setText(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex01());</span>
+<span class="nc" id="L953">                String lsAttachmentType = po().TransactionAttachmentList(pnAttachment).getModel().getDocumentType();</span>
+<span class="nc bnc" id="L954" title="All 2 branches missed.">                if (lsAttachmentType.equals(&quot;&quot;)) {</span>
+<span class="nc" id="L955">                    po().TransactionAttachmentList(pnAttachment).getModel().setDocumentType(DocumentType.OTHER);</span>
+<span class="nc" id="L956">                    lsAttachmentType = po().TransactionAttachmentList(pnAttachment).getModel().getDocumentType();</span>
+                }
+<span class="nc" id="L958">                int lnAttachmentType = 0;</span>
+<span class="nc" id="L959">                lnAttachmentType = Integer.parseInt(lsAttachmentType);</span>
+<span class="nc" id="L960">                cmbAttachmentType.getSelectionModel().select(lnAttachmentType);</span>
+<span class="nc bnc" id="L961" title="All 2 branches missed.">                if (lbloadImage) {</span>
+                    try {
+<span class="nc" id="L963">                        String filePath = (String) attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex02();</span>
+<span class="nc" id="L964">                        String filePath2 = &quot;&quot;;</span>
+
+                        // in server
+<span class="nc bnc" id="L967" title="All 4 branches missed.">                        if (po().TransactionAttachmentList(pnAttachment).getModel().getImagePath() != null &amp;&amp; !&quot;&quot;.equals(po().TransactionAttachmentList(pnAttachment).getModel().getImagePath())) {</span>
+<span class="nc" id="L968">                            filePath2 = po().TransactionAttachmentList(pnAttachment).getModel().getImagePath() + &quot;/&quot; + (String) attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex02();</span>
+                        } else {
+<span class="nc" id="L970">                            filePath2 = System.getProperty(&quot;sys.default.path.temp.attachments&quot;) + &quot;/&quot; + (String) attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex02();</span>
+                        }
+
+<span class="nc bnc" id="L973" title="All 4 branches missed.">                        if (filePath != null &amp;&amp; !filePath.isEmpty()) {</span>
+<span class="nc" id="L974">                            Path imgPath = Paths.get(filePath2);</span>
+<span class="nc" id="L975">                            String convertedPath = imgPath.toUri().toString();</span>
+<span class="nc" id="L976">                            boolean isPdf = filePath.toLowerCase().endsWith(&quot;.pdf&quot;);</span>
+
+                            // Clear previous content
+<span class="nc" id="L979">                            stackPane1.getChildren().clear();</span>
+<span class="nc bnc" id="L980" title="All 2 branches missed.">                            if (!isPdf) {</span>
+                                // ----- IMAGE VIEW -----
+<span class="nc" id="L982">                                Image loimage = new Image(convertedPath);</span>
+<span class="nc" id="L983">                                imageView.setImage(loimage);</span>
+<span class="nc" id="L984">                                JFXUtil.adjustImageSize(loimage, imageView, ldstackPaneWidth, ldstackPaneHeight);</span>
+
+<span class="nc" id="L986">                                PauseTransition delay = new PauseTransition(Duration.seconds(2)); // 2-second delay</span>
+<span class="nc" id="L987">                                delay.setOnFinished(event -&gt; {</span>
+<span class="nc" id="L988">                                    Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L989">                                        JFXUtil.stackPaneClip(stackPane1);</span>
+<span class="nc" id="L990">                                    });</span>
+<span class="nc" id="L991">                                });</span>
+<span class="nc" id="L992">                                delay.play();</span>
+
+                                // Add ImageView directly to stackPane
+<span class="nc" id="L995">                                stackPane1.getChildren().add(imageView);</span>
+<span class="nc" id="L996">                                stackPane1.getChildren().addAll(btnArrowLeft, btnArrowRight);</span>
+
+                                // Align buttons on top
+<span class="nc" id="L999">                                StackPane.setAlignment(btnArrowLeft, Pos.CENTER_LEFT);</span>
+<span class="nc" id="L1000">                                StackPane.setAlignment(btnArrowRight, Pos.CENTER_RIGHT);</span>
+
+                                // Optional: add some margin
+<span class="nc" id="L1003">                                StackPane.setMargin(btnArrowLeft, new Insets(0, 0, 0, 10));</span>
+<span class="nc" id="L1004">                                StackPane.setMargin(btnArrowRight, new Insets(0, 10, 0, 0));</span>
+
+<span class="nc" id="L1006">                            } else {</span>
+                                // ----- PDF VIEW -----
+<span class="nc" id="L1008">                                JFXUtil.PDFViewConfig(filePath2, stackPane1, btnArrowLeft, btnArrowRight, ldstackPaneWidth, ldstackPaneHeight);</span>
+                            }
+<span class="nc" id="L1010">                        } else {</span>
+<span class="nc" id="L1011">                            imageView.setImage(null);</span>
+                        }
+
+<span class="nc" id="L1014">                    } catch (Exception e) {</span>
+<span class="nc" id="L1015">                        imageView.setImage(null);</span>
+<span class="nc" id="L1016">                    }</span>
+                }
+<span class="nc" id="L1018">            } else {</span>
+<span class="nc bnc" id="L1019" title="All 2 branches missed.">                if (!lbloadImage) {</span>
+<span class="nc" id="L1020">                    imageView.setImage(null);</span>
+                    // Clear previous content
+<span class="nc" id="L1022">                    stackPane1.getChildren().clear();</span>
+                    // Add ImageView directly to stackPane
+<span class="nc" id="L1024">                    stackPane1.getChildren().add(imageView);</span>
+<span class="nc" id="L1025">                    stackPane1.getChildren().addAll(btnArrowLeft, btnArrowRight);</span>
+<span class="nc" id="L1026">                    Platform.runLater(() -&gt; JFXUtil.stackPaneClip(stackPane1));</span>
+<span class="nc" id="L1027">                    pnAttachment = 0;</span>
+                }
+            }
+<span class="nc" id="L1030">        } catch (Exception ex) {</span>
+<span class="nc" id="L1031">        }</span>
+<span class="nc" id="L1032">    }</span>
+    
+    private void initStackPaneListener() {
+<span class="nc" id="L1035">        stackPane1.widthProperty().addListener((observable, oldValue, newWidth) -&gt; {</span>
+<span class="nc" id="L1036">            double computedWidth = newWidth.doubleValue();</span>
+<span class="nc" id="L1037">            ldstackPaneWidth = computedWidth;</span>
+
+<span class="nc" id="L1039">        });</span>
+<span class="nc" id="L1040">        stackPane1.heightProperty().addListener((observable, oldValue, newHeight) -&gt; {</span>
+<span class="nc" id="L1041">            double computedHeight = newHeight.doubleValue();</span>
+<span class="nc" id="L1042">            ldstackPaneHeight = computedHeight;</span>
+<span class="nc" id="L1043">            loadTableAttachment();</span>
+<span class="nc" id="L1044">            loadRecordAttachment(true);</span>
+<span class="nc" id="L1045">            initAttachmentsGrid();</span>
+<span class="nc" id="L1046">        });</span>
+<span class="nc" id="L1047">    }</span>
+
+    private void initAttachmentPreviewPane() {
+<span class="nc" id="L1050">        stackPane1.layoutBoundsProperty().addListener((observable, oldBounds, newBounds) -&gt; {</span>
+<span class="nc" id="L1051">            stackPane1.setClip(new javafx.scene.shape.Rectangle(</span>
+<span class="nc" id="L1052">                    newBounds.getMinX(),</span>
+<span class="nc" id="L1053">                    newBounds.getMinY(),</span>
+<span class="nc" id="L1054">                    newBounds.getWidth(),</span>
+<span class="nc" id="L1055">                    newBounds.getHeight()</span>
+            ));
+<span class="nc" id="L1057">        });</span>
+<span class="nc" id="L1058">        imageView.setOnScroll((ScrollEvent event) -&gt; {</span>
+<span class="nc" id="L1059">            double delta = event.getDeltaY();</span>
+<span class="nc bnc" id="L1060" title="All 2 branches missed.">            scaleFactor = Math.max(0.5, Math.min(scaleFactor * (delta &gt; 0 ? 1.1 : 0.9), 5.0));</span>
+<span class="nc" id="L1061">            imageView.setScaleX(scaleFactor);</span>
+<span class="nc" id="L1062">            imageView.setScaleY(scaleFactor);</span>
+<span class="nc" id="L1063">        });</span>
+
+<span class="nc" id="L1065">        imageView.setOnMousePressed((MouseEvent event) -&gt; {</span>
+<span class="nc" id="L1066">            mouseAnchorX = event.getSceneX() - imageView.getTranslateX();</span>
+<span class="nc" id="L1067">            mouseAnchorY = event.getSceneY() - imageView.getTranslateY();</span>
+<span class="nc" id="L1068">        });</span>
+
+<span class="nc" id="L1070">        imageView.setOnMouseDragged((MouseEvent event) -&gt; {</span>
+<span class="nc" id="L1071">            double translateX = event.getSceneX() - mouseAnchorX;</span>
+<span class="nc" id="L1072">            double translateY = event.getSceneY() - mouseAnchorY;</span>
+<span class="nc" id="L1073">            imageView.setTranslateX(translateX);</span>
+<span class="nc" id="L1074">            imageView.setTranslateY(translateY);</span>
+<span class="nc" id="L1075">        });</span>
+
+<span class="nc" id="L1077">        stackPane1.widthProperty().addListener((observable, oldValue, newWidth) -&gt; {</span>
+<span class="nc" id="L1078">            double computedWidth = newWidth.doubleValue();</span>
+<span class="nc" id="L1079">            ldstackPaneWidth = computedWidth;</span>
+
+<span class="nc" id="L1081">        });</span>
+<span class="nc" id="L1082">        stackPane1.heightProperty().addListener((observable, oldValue, newHeight) -&gt; {</span>
+<span class="nc" id="L1083">            double computedHeight = newHeight.doubleValue();</span>
+<span class="nc" id="L1084">            ldstackPaneHeight = computedHeight;</span>
+
+            //Placed to get height and width of stack pane in computed size before loading the image
+<span class="nc" id="L1087">            initStackPaneListener();</span>
+<span class="nc" id="L1088">            initAttachmentsGrid();</span>
+<span class="nc" id="L1089">        });</span>
+
+<span class="nc" id="L1091">    }</span>
+
+    private void initAttachmentsGrid() {
+        /*FOCUS ON FIRST ROW*/
+<span class="nc" id="L1095">        JFXUtil.setColumnCenter(tblRowNoAttachment);</span>
+<span class="nc" id="L1096">        JFXUtil.setColumnLeft(tblFileNameAttachment);</span>
+<span class="nc" id="L1097">        JFXUtil.setColumnsIndexAndDisableReordering(tblAttachments);</span>
+<span class="nc" id="L1098">        tblAttachments.setItems(attachment_data);</span>
+
+<span class="nc bnc" id="L1100" title="All 4 branches missed.">        if (pnAttachment &lt; 0 || pnAttachment &gt;= attachment_data.size()) {</span>
+<span class="nc bnc" id="L1101" title="All 2 branches missed.">            if (!attachment_data.isEmpty()) {</span>
+                /* FOCUS ON FIRST ROW */
+<span class="nc" id="L1103">                tblAttachments.getSelectionModel().select(0);</span>
+<span class="nc" id="L1104">                tblAttachments.getFocusModel().focus(0);</span>
+<span class="nc" id="L1105">                pnAttachment = tblAttachments.getSelectionModel().getSelectedIndex();</span>
+            }
+        } else {
+            /* FOCUS ON THE ROW THAT pnRowDetail POINTS TO */
+<span class="nc" id="L1109">            tblAttachments.getSelectionModel().select(pnAttachment);</span>
+<span class="nc" id="L1110">            tblAttachments.getFocusModel().focus(pnAttachment);</span>
+        }
+
+<span class="nc" id="L1113">    }</span>
+
+    private void slideImage(int direction) {
+<span class="nc bnc" id="L1116" title="All 2 branches missed.">        if (attachment_data.size() &lt;= 0) {</span>
+<span class="nc" id="L1117">            return;</span>
+        }
+
+<span class="nc" id="L1120">        currentIndex = pnAttachment;</span>
+<span class="nc" id="L1121">        int newIndex = currentIndex + direction;</span>
+
+<span class="nc bnc" id="L1123" title="All 4 branches missed.">        if (newIndex != -1 &amp;&amp; (newIndex &lt;= attachment_data.size() - 1)) {</span>
+<span class="nc" id="L1124">            ModelPOAttachment image = attachment_data.get(newIndex);</span>
+<span class="nc" id="L1125">            String filePath2 = &quot;D:\\GGC_Maven_Systems\\temp\\attachments\\&quot; + image.getIndex02();</span>
+<span class="nc" id="L1126">            TranslateTransition slideOut = new TranslateTransition(Duration.millis(300), imageView);</span>
+<span class="nc" id="L1127">            slideOut.setByX(direction * -400); // Move left or right</span>
+
+<span class="nc" id="L1129">            tblAttachments.getFocusModel().focus(newIndex);</span>
+<span class="nc" id="L1130">            tblAttachments.getSelectionModel().select(newIndex);</span>
+<span class="nc" id="L1131">            pnAttachment = newIndex;</span>
+<span class="nc" id="L1132">            loadRecordAttachment(false);</span>
+
+            // Create a transition animation
+<span class="nc" id="L1135">            slideOut.setOnFinished(event -&gt; {</span>
+<span class="nc" id="L1136">                imageView.setTranslateX(direction * 400);</span>
+<span class="nc" id="L1137">                TranslateTransition slideIn = new TranslateTransition(Duration.millis(300), imageView);</span>
+<span class="nc" id="L1138">                slideIn.setToX(0);</span>
+<span class="nc" id="L1139">                slideIn.play();</span>
+
+<span class="nc" id="L1141">                loadRecordAttachment(true);</span>
+<span class="nc" id="L1142">            });</span>
+
+<span class="nc" id="L1144">            slideOut.play();</span>
+        }
+<span class="nc bnc" id="L1146" title="All 2 branches missed.">        if (isImageViewOutOfBounds(imageView, stackPane1)) {</span>
+<span class="nc" id="L1147">            resetImageBounds();</span>
+        }
+<span class="nc" id="L1149">    }</span>
+
+    private boolean isImageViewOutOfBounds(ImageView imageView, StackPane stackPane) {
+<span class="nc" id="L1152">        Bounds clipBounds = stackPane.getClip().getBoundsInParent();</span>
+<span class="nc" id="L1153">        Bounds imageBounds = imageView.getBoundsInParent();</span>
+
+<span class="nc bnc" id="L1155" title="All 2 branches missed.">        return imageBounds.getMaxX() &lt; clipBounds.getMinX()</span>
+<span class="nc bnc" id="L1156" title="All 2 branches missed.">                || imageBounds.getMinX() &gt; clipBounds.getMaxX()</span>
+<span class="nc bnc" id="L1157" title="All 2 branches missed.">                || imageBounds.getMaxY() &lt; clipBounds.getMinY()</span>
+<span class="nc bnc" id="L1158" title="All 2 branches missed.">                || imageBounds.getMinY() &gt; clipBounds.getMaxY();</span>
+    }
+
+    private void resetImageBounds() {
+<span class="nc" id="L1162">        imageView.setScaleX(1.0);</span>
+<span class="nc" id="L1163">        imageView.setScaleY(1.0);</span>
+<span class="nc" id="L1164">        imageView.setTranslateX(0);</span>
+<span class="nc" id="L1165">        imageView.setTranslateY(0);</span>
+<span class="nc" id="L1166">        stackPane1.setAlignment(imageView, javafx.geometry.Pos.CENTER);</span>
+<span class="nc" id="L1167">    }</span>
+
+    private void stackPaneClip() {
+<span class="nc" id="L1170">        javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle(</span>
+<span class="nc" id="L1171">                stackPane1.getWidth() - 8, // Subtract 10 for padding (5 on each side)</span>
+<span class="nc" id="L1172">                stackPane1.getHeight() - 8 // Subtract 10 for padding (5 on each side)</span>
+        );
+<span class="nc" id="L1174">        clip.setArcWidth(8); // Optional: Rounded corners for aesthetics</span>
+<span class="nc" id="L1175">        clip.setArcHeight(8);</span>
+<span class="nc" id="L1176">        clip.setLayoutX(4); // Set padding offset for X</span>
+<span class="nc" id="L1177">        clip.setLayoutY(4); // Set padding offset for Y</span>
+<span class="nc" id="L1178">        stackPane1.setClip(clip);</span>
+
+<span class="nc" id="L1180">    }</span>
+    private void initComboBoxes() {
+<span class="nc" id="L1182">        JFXUtil.initComboBoxCellDesignColor(&quot;#FF8201&quot;, cmbAttachmentType);</span>
+<span class="nc" id="L1183">        cmbAttachmentType.setItems(documentType);</span>
+<span class="nc" id="L1184">        cmbAttachmentType.setOnAction(event -&gt; {</span>
+<span class="nc bnc" id="L1185" title="All 2 branches missed.">            if (attachment_data.size() &gt; 0) {</span>
+<span class="nc" id="L1186">                int selectedIndex = cmbAttachmentType.getSelectionModel().getSelectedIndex();</span>
+<span class="nc" id="L1187">                po().TransactionAttachmentList(pnAttachment).getModel().setDocumentType(&quot;000&quot; + String.valueOf(selectedIndex));</span>
+<span class="nc" id="L1188">                cmbAttachmentType.getSelectionModel().select(selectedIndex);</span>
+            }
+<span class="nc" id="L1190">        });</span>
+<span class="nc" id="L1191">    }</span>
+    public void loadTableDetailFromMain() {
+        try {
+<span class="nc" id="L1194">            poJSON = new JSONObject();</span>
+<span class="nc bnc" id="L1195" title="All 4 branches missed.">            if (po().getEditMode() == EditMode.READY || po().getEditMode() == EditMode.UPDATE</span>
+<span class="nc bnc" id="L1196" title="All 2 branches missed.">                    || po().getEditMode() == EditMode.UPDATE) {</span>
+<span class="nc" id="L1197">                po().loadAttachments();</span>
+
+<span class="nc" id="L1199">                tfAttachmentNo.clear();</span>
+<span class="nc" id="L1200">                cmbAttachmentType.setItems(documentType);</span>
+<span class="nc" id="L1201">                imageView.setImage(null);</span>
+<span class="nc" id="L1202">                stackPaneClip();</span>
+<span class="nc" id="L1203">                Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L1204">                    loadTableAttachment();</span>
+<span class="nc" id="L1205">                });</span>
+            }
+
+<span class="nc" id="L1208">        } catch (SQLException | GuanzonException ex) {</span>
+<span class="nc" id="L1209">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="nc" id="L1210">        }</span>
+<span class="nc" id="L1211">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

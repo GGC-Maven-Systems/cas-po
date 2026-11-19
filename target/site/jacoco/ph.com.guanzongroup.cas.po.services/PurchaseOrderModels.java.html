@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderModels.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.services</a> &gt; <span class="el_source">PurchaseOrderModels.java</span></div><h1>PurchaseOrderModels.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.services;
+
+import org.guanzon.appdriver.base.GRiderCAS;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+
+/**
+ * Creates the PO_Master / PO_Detail models (one of each per instance), set up
+ * with their metadata (Model_PO_Master.xml / Model_PO_Detail.xml) and table.
+ */
+public class PurchaseOrderModels {
+
+    private final GRiderCAS poGRider;
+    private Model_PO_Master poMaster;
+    private Model_PO_Detail poDetail;
+
+<span class="nc" id="L17">    public PurchaseOrderModels(GRiderCAS applicationDriver) {</span>
+<span class="nc" id="L18">        poGRider = applicationDriver;</span>
+<span class="nc" id="L19">    }</span>
+
+    public Model_PO_Master PurchaseOrderMaster() {
+<span class="nc bnc" id="L22" title="All 2 branches missed.">        if (poGRider == null) {</span>
+<span class="nc" id="L23">            System.err.println(&quot;PurchaseOrderModels.PurchaseOrderMaster: Application driver is not set.&quot;);</span>
+<span class="nc" id="L24">            return null;</span>
+        }
+<span class="nc bnc" id="L26" title="All 2 branches missed.">        if (poMaster == null) {</span>
+<span class="nc" id="L27">            poMaster = new Model_PO_Master();</span>
+<span class="nc" id="L28">            poMaster.setApplicationDriver(poGRider);</span>
+<span class="nc" id="L29">            poMaster.setXML(&quot;Model_PO_Master&quot;);</span>
+<span class="nc" id="L30">            poMaster.setTableName(&quot;PO_Master&quot;);</span>
+<span class="nc" id="L31">            poMaster.initialize();</span>
+        }
+<span class="nc" id="L33">        return poMaster;</span>
+    }
+
+    public Model_PO_Detail PurchaseOrderDetails() {
+<span class="nc bnc" id="L37" title="All 2 branches missed.">        if (poGRider == null) {</span>
+<span class="nc" id="L38">            System.err.println(&quot;PurchaseOrderModels.PurchaseOrderDetails: Application driver is not set.&quot;);</span>
+<span class="nc" id="L39">            return null;</span>
+        }
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (poDetail == null) {</span>
+<span class="nc" id="L42">            poDetail = new Model_PO_Detail();</span>
+<span class="nc" id="L43">            poDetail.setApplicationDriver(poGRider);</span>
+<span class="nc" id="L44">            poDetail.setXML(&quot;Model_PO_Detail&quot;);</span>
+<span class="nc" id="L45">            poDetail.setTableName(&quot;PO_Detail&quot;);</span>
+<span class="nc" id="L46">            poDetail.initialize();</span>
+        }
+<span class="nc" id="L48">        return poDetail;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

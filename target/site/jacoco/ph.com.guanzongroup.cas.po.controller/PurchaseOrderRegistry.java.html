@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderRegistry.java</span></div><h1>PurchaseOrderRegistry.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+
+/**
+ * The one place that maps an industry to its Purchase Order controller.
+ *
+ * &lt;p&gt;
+ * Each controller creates its own validator ({@code createValidator()}), so
+ * this list also decides which rules an industry uses. Adding an industry is
+ * one line here plus its controller/validator classes.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Use it through the factory, which also sets the controller up:
+ * {@code new PurchaseOrderControllers(poApp, poLog).PurchaseOrder(industryId)}
+ * (ph.com.guanzongroup.cas.po.services).&lt;/p&gt;
+ */
+public final class PurchaseOrderRegistry {
+
+    /**
+     * Industry codes. TODO: set each to the code stored in sIndstCdx (the same
+     * codes PurchaseOrderValidatorFactory uses today). An empty code is not
+     * registered, so that industry uses the default (General) until it is set.
+     */
+    public static final class IndustryCode {
+
+        public static final String MOTORCYCLE = &quot;&quot;;
+        public static final String MOBILE_PHONE = &quot;&quot;;
+        public static final String SPARE_PARTS = &quot;&quot;;
+        public static final String APPLIANCE = &quot;&quot;;
+
+        private IndustryCode() {
+        }
+    }
+
+    /** Controller for any industry not registered below. */
+<span class="nc" id="L40">    private static final Supplier&lt;PurchaseOrder&gt; DEFAULT = PurchaseOrderGeneral::new;</span>
+
+    private static final Map&lt;String, Supplier&lt;PurchaseOrder&gt;&gt; CONTROLLERS;
+
+    static {
+<span class="nc" id="L45">        Map&lt;String, Supplier&lt;PurchaseOrder&gt;&gt; loMap = new HashMap&lt;&gt;();</span>
+        //Keep an industry commented out (it then uses General) until its
+        //controller's TODOs are filled in.
+<span class="nc" id="L48">        register(loMap, IndustryCode.MOTORCYCLE, PurchaseOrderMC::new);</span>
+<span class="nc" id="L49">        register(loMap, IndustryCode.MOBILE_PHONE, PurchaseOrderMP::new);</span>
+<span class="nc" id="L50">        register(loMap, IndustryCode.SPARE_PARTS, PurchaseOrderSP::new);</span>
+<span class="nc" id="L51">        register(loMap, IndustryCode.APPLIANCE, PurchaseOrderAppliance::new);</span>
+<span class="nc" id="L52">        CONTROLLERS = Collections.unmodifiableMap(loMap);</span>
+<span class="nc" id="L53">    }</span>
+
+    private PurchaseOrderRegistry() {
+    }
+
+    private static void register(Map&lt;String, Supplier&lt;PurchaseOrder&gt;&gt; foMap,
+            String fsIndustryId, Supplier&lt;PurchaseOrder&gt; foController) {
+<span class="nc bnc" id="L60" title="All 4 branches missed.">        if (fsIndustryId == null || fsIndustryId.trim().isEmpty()) {</span>
+<span class="nc" id="L61">            return;</span>
+        }
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (foMap.put(fsIndustryId, foController) != null) {</span>
+<span class="nc" id="L64">            throw new IllegalStateException(&quot;Industry &quot; + fsIndustryId + &quot; is registered twice.&quot;);</span>
+        }
+<span class="nc" id="L66">    }</span>
+
+    /** New, uninitialized controller for the industry (General when not registered). */
+    public static PurchaseOrder create(String fsIndustryId) {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        Supplier&lt;PurchaseOrder&gt; loController = fsIndustryId == null ? null : CONTROLLERS.get(fsIndustryId);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        return (loController != null ? loController : DEFAULT).get();</span>
+    }
+
+    /** Whether the industry has its own controller. */
+    public static boolean isRegistered(String fsIndustryId) {
+<span class="nc bnc" id="L76" title="All 4 branches missed.">        return fsIndustryId != null &amp;&amp; CONTROLLERS.containsKey(fsIndustryId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

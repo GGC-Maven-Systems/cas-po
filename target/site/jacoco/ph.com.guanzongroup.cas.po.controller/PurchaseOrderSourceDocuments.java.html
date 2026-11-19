@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderSourceDocuments.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderSourceDocuments.java</span></div><h1>PurchaseOrderSourceDocuments.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import static ph.com.guanzongroup.cas.po.utility.Results.error;
+import static ph.com.guanzongroup.cas.po.utility.Results.isSuccess;
+import static ph.com.guanzongroup.cas.po.utility.Results.success;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.guanzon.appdriver.agent.services.Model;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.Logical;
+import org.guanzon.cas.inv.warehouse.StockRequest;
+import org.guanzon.cas.inv.warehouse.services.InvWarehouseControllers;
+import org.guanzon.cas.inv.warehouse.status.StockRequestStatus;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.poqt.services.QuotationControllers;
+import ph.com.guanzongroup.cas.poqt.status.POQuotationStatus;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
+import ph.com.guanzongroup.cas.poqt.controller.POQuotation;
+
+/**
+ * The documents a Purchase Order is created from: stock requests and PO
+ * quotations.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;Picking sources: {@link #getAvailableSources()},
+ * {@link #addStockRequestLines(String)}, {@link #addQuotationLines(String)}.&lt;/li&gt;
+ * &lt;li&gt;Status changes: {@link #prepare(String, List)} before the DB
+ * transaction, {@link #save()} and {@link #updateQuotationStatus(String)}
+ * inside it.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * Works with any {@link PurchaseOrder} controller.
+ *
+ * &lt;p&gt;
+ * QUOTATION LINK: PO quotations belong to cas-poqt (POQuotation,
+ * QuotationControllers, POQuotationStatus). This class and
+ * Model_PO_Detail.POQuotationMaster() / POQuotationDetail() are the only
+ * places cas-po uses them.&lt;/p&gt;
+ */
+public class PurchaseOrderSourceDocuments {
+
+<span class="fc" id="L57">    private static final Logger LOG = Logger.getLogger(PurchaseOrderSourceDocuments.class.getName());</span>
+
+    /** Adds an empty detail row to the purchase order (the controller's AddDetail). */
+    @FunctionalInterface
+    public interface RowAdder {
+
+        JSONObject addRow() throws CloneNotSupportedException;
+    }
+
+    private final PurchaseOrder poPO;
+    private final GRiderCAS poGRider;
+    private final Supplier&lt;InvWarehouseControllers&gt; poWarehouse;
+    private final Supplier&lt;QuotationControllers&gt; poQuotations;
+    private final RowAdder poRowAdder;
+
+    /** Stock requests whose ordered quantity changes with this PO. */
+<span class="fc" id="L73">    private List&lt;StockRequest&gt; paStockRequests = new ArrayList&lt;&gt;();</span>
+    /** Quotations referenced by this PO (saved with it). */
+<span class="fc" id="L75">    private List&lt;POQuotation&gt; paQuotations = new ArrayList&lt;&gt;();</span>
+    /** Quotations on current lines, whose status follows the PO. */
+<span class="fc" id="L77">    private List&lt;POQuotation&gt; paQuotationStatus = new ArrayList&lt;&gt;();</span>
+    /** Quotations on removed lines, released when no other PO uses them. */
+<span class="fc" id="L79">    private List&lt;POQuotation&gt; paRemovedQuotationStatus = new ArrayList&lt;&gt;();</span>
+
+    public PurchaseOrderSourceDocuments(PurchaseOrder foPO, GRiderCAS foGRider,
+            Supplier&lt;InvWarehouseControllers&gt; foWarehouse, Supplier&lt;QuotationControllers&gt; foQuotations,
+<span class="fc" id="L83">            RowAdder foRowAdder) {</span>
+<span class="fc" id="L84">        poPO = foPO;</span>
+<span class="fc" id="L85">        poGRider = foGRider;</span>
+<span class="fc" id="L86">        poWarehouse = foWarehouse;</span>
+<span class="fc" id="L87">        poQuotations = foQuotations;</span>
+<span class="fc" id="L88">        poRowAdder = foRowAdder;</span>
+<span class="fc" id="L89">    }</span>
+
+    public void reset() {
+<span class="nc" id="L92">        paStockRequests = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L93">        paQuotations = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L94">        paQuotationStatus = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L95">        paRemovedQuotationStatus = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L96">    }</span>
+
+    // =====================================================================
+    // Status changes
+    // =====================================================================
+    /**
+     * Before a status change or saving a confirmed PO: checks every source line
+     * (validator) and loads the stock requests / quotations to update.
+     *
+     * @param faRemoved detail rows removed from the PO
+     */
+    public JSONObject prepare(String fsStatus, List&lt;Model&gt; faRemoved)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L109">        reset();</span>
+
+<span class="nc" id="L111">        JSONObject loJSON = poPO.rules(fsStatus).validateSourceLines();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L113">            return loJSON;</span>
+        }
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; poPO.getDetailCount(); lnCtr++) {</span>
+<span class="nc" id="L117">            prepareLine(fsStatus, poPO.Detail(lnCtr), false);</span>
+        }
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (faRemoved != null) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            for (Model loRemoved : faRemoved) {</span>
+<span class="nc" id="L121">                prepareLine(fsStatus, (Model_PO_Detail) loRemoved, true);</span>
+<span class="nc" id="L122">            }</span>
+        }
+<span class="nc" id="L124">        return success();</span>
+    }
+
+    private void prepareLine(String fsStatus, Model_PO_Detail foDetail, boolean fbRemoved)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L129">        String lsSourceNo = foDetail.getSouceNo();</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        if (lsSourceNo == null || lsSourceNo.isEmpty()) {</span>
+<span class="nc" id="L131">            return;</span>
+        }
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (PurchaseOrderStatus.SourceCode.STOCKREQUEST.equals(foDetail.getSouceCode())) {</span>
+<span class="nc" id="L134">            updateStockRequest(fsStatus, lsSourceNo, foDetail.getStockID(), foDetail.getQuantity().doubleValue(), fbRemoved);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        } else if (PurchaseOrderStatus.SourceCode.POQUOTATION.equals(foDetail.getSouceCode())) {</span>
+<span class="nc" id="L136">            addQuotation(lsSourceNo, fbRemoved);</span>
+        }
+<span class="nc" id="L138">    }</span>
+
+    /** Loads the quotation once; quotation detail quantities are not updated yet. */
+    private void addQuotation(String fsQuotationNo, boolean fbRemoved)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        for (POQuotation loQuotation : paQuotations) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            if (fsQuotationNo.equals(loQuotation.Master().getTransactionNo())) {</span>
+<span class="nc" id="L145">                return;</span>
+            }
+<span class="nc" id="L147">        }</span>
+
+<span class="nc" id="L149">        POQuotation loStatus = openQuotation(fsQuotationNo);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (fbRemoved) {</span>
+<span class="nc" id="L151">            paRemovedQuotationStatus.add(loStatus);</span>
+        } else {
+<span class="nc" id="L153">            paQuotationStatus.add(loStatus);</span>
+        }
+
+<span class="nc" id="L156">        POQuotation loQuotation = openQuotation(fsQuotationNo);</span>
+<span class="nc" id="L157">        loQuotation.UpdateTransaction();</span>
+<span class="nc" id="L158">        paQuotations.add(loQuotation);</span>
+        //TODO update the ordered quantity of the quotation details when that is specified
+<span class="nc" id="L160">    }</span>
+
+    private POQuotation openQuotation(String fsQuotationNo) throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L163">        POQuotation loQuotation = poQuotations.get().POQuotation();</span>
+<span class="nc" id="L164">        loQuotation.InitTransaction();</span>
+<span class="nc" id="L165">        loQuotation.OpenTransaction(fsQuotationNo);</span>
+<span class="nc" id="L166">        return loQuotation;</span>
+    }
+
+    /**
+     * Sets the ordered quantity of one stock request item for the new status.
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;CONFIRMED: what other POs ordered, plus this line (a line removed
+     * from the PO no longer counts).&lt;/li&gt;
+     * &lt;li&gt;APPROVED: unchanged; the request is marked processed.&lt;/li&gt;
+     * &lt;li&gt;CANCELLED: what other POs ordered (this PO no longer counts).&lt;/li&gt;
+     * &lt;li&gt;VOID / RETURNED: the ordered total less this line.&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    private void updateStockRequest(String fsStatus, String fsRequestNo, String fsStockId, double fnQuantity,
+            boolean fbRemoved)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L183">        StockRequest loRequest = null;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        for (StockRequest loLoaded : paStockRequests) {</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (fsRequestNo.equals(loLoaded.Master().getTransactionNo())) {</span>
+<span class="nc" id="L186">                loRequest = loLoaded;</span>
+<span class="nc" id="L187">                break;</span>
+            }
+<span class="nc" id="L189">        }</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (loRequest == null) {</span>
+<span class="nc" id="L191">            loRequest = poWarehouse.get().StockRequest();</span>
+<span class="nc" id="L192">            loRequest.InitTransaction();</span>
+<span class="nc" id="L193">            loRequest.OpenTransaction(fsRequestNo);</span>
+<span class="nc" id="L194">            loRequest.UpdateTransaction();</span>
+<span class="nc" id="L195">            paStockRequests.add(loRequest);</span>
+        }
+
+<span class="nc bnc" id="L198" title="All 2 branches missed.">        for (int lnRow = 0; lnRow &lt; loRequest.getDetailCount(); lnRow++) {</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            if (!fsStockId.equals(loRequest.Detail(lnRow).getStockId())) {</span>
+<span class="nc" id="L200">                continue;</span>
+            }
+
+            double lnOrdered;
+<span class="nc bnc" id="L204" title="All 5 branches missed.">            switch (fsStatus) {</span>
+                case PurchaseOrderStatus.CONFIRMED:
+<span class="nc bnc" id="L206" title="All 2 branches missed.">                    lnOrdered = getOrderedQuantity(fsRequestNo, fsStockId, loRequest.getSourceCode(), true)</span>
+                            + (fbRemoved ? 0 : fnQuantity);
+<span class="nc" id="L208">                    break;</span>
+                case PurchaseOrderStatus.APPROVED:
+<span class="nc" id="L210">                    lnOrdered = loRequest.Detail(lnRow).getPurchase();</span>
+<span class="nc" id="L211">                    loRequest.Master().setProcessed(true);</span>
+<span class="nc" id="L212">                    loRequest.Master().setModifiedDate(poGRider.getServerDate());</span>
+<span class="nc" id="L213">                    loRequest.Master().setModifyingId(poGRider.getUserID());</span>
+<span class="nc" id="L214">                    break;</span>
+                case PurchaseOrderStatus.CANCELLED:
+                    //only this PO's quantity is released; other POs' orders stay
+<span class="nc" id="L217">                    lnOrdered = getOrderedQuantity(fsRequestNo, fsStockId, loRequest.getSourceCode(), true);</span>
+<span class="nc" id="L218">                    break;</span>
+                case PurchaseOrderStatus.VOID:
+                case PurchaseOrderStatus.RETURNED:
+<span class="nc" id="L221">                    lnOrdered = getOrderedQuantity(fsRequestNo, fsStockId, loRequest.getSourceCode(), false) - fnQuantity;</span>
+<span class="nc" id="L222">                    break;</span>
+                default:
+<span class="nc" id="L224">                    lnOrdered = 0;</span>
+            }
+<span class="nc" id="L226">            loRequest.Detail(lnRow).setPurchase(Math.max(lnOrdered, 0));</span>
+<span class="nc" id="L227">            loRequest.Detail(lnRow).setModifiedDate(poGRider.getServerDate());</span>
+<span class="nc" id="L228">            break;</span>
+        }
+<span class="nc" id="L230">    }</span>
+
+    /** Quantity ordered by confirmed/approved POs (excluding this PO when fbExcludeThis). */
+    private double getOrderedQuantity(String fsSourceNo, String fsStockId, String fsSourceCode, boolean fbExcludeThis)
+            throws SQLException {
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        String lsSQL = PurchaseOrderQueries.orderedQuantity(fsSourceNo, fsStockId, fsSourceCode,</span>
+<span class="nc" id="L236">                fbExcludeThis ? poPO.Master().getTransactionNo() : null);</span>
+<span class="nc" id="L237">        LOG.log(Level.FINE, lsSQL);</span>
+<span class="nc" id="L238">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L240">            return 0;</span>
+        }
+        try {
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            return loRS.next() ? loRS.getDouble(&quot;nQuantity&quot;) : 0;</span>
+        } finally {
+<span class="nc" id="L245">            MiscUtil.close(loRS);</span>
+        }
+    }
+
+    /** Saves the prepared stock requests and quotations (inside the PO's DB transaction). */
+    public JSONObject save() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        for (StockRequest loRequest : paStockRequests) {</span>
+<span class="nc" id="L252">            loRequest.Master().setModifyingId(poGRider.Encrypt(poGRider.getUserID()));</span>
+<span class="nc" id="L253">            loRequest.Master().setModifiedDate(poGRider.getServerDate());</span>
+<span class="nc" id="L254">            loRequest.setWithParent(true);</span>
+<span class="nc" id="L255">            JSONObject loJSON = loRequest.SaveTransaction();</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L257">                LOG.log(Level.WARNING, &quot;Stock request saving failed: {0}&quot;, loJSON.get(&quot;message&quot;));</span>
+<span class="nc" id="L258">                return loJSON;</span>
+            }
+<span class="nc" id="L260">        }</span>
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (POQuotation loQuotation : paQuotations) {</span>
+<span class="nc" id="L263">            loQuotation.Master().setModifyingId(poGRider.Encrypt(poGRider.getUserID()));</span>
+<span class="nc" id="L264">            loQuotation.Master().setModifiedDate(poGRider.getServerDate());</span>
+<span class="nc" id="L265">            loQuotation.setWithParent(true);</span>
+<span class="nc" id="L266">            JSONObject loJSON = loQuotation.SaveTransaction();</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L268">                LOG.log(Level.WARNING, &quot;PO quotation saving failed: {0}&quot;, loJSON.get(&quot;message&quot;));</span>
+<span class="nc" id="L269">                return loJSON;</span>
+            }
+<span class="nc" id="L271">        }</span>
+<span class="nc" id="L272">        return success();</span>
+    }
+
+    /**
+     * Quotation status follows the PO (inside the PO's DB transaction):
+     * &lt;ul&gt;
+     * &lt;li&gt;CONFIRMED: the quotations are posted;&lt;/li&gt;
+     * &lt;li&gt;RETURNED / VOID / CANCELLED: quotations no other PO uses go back to
+     * approved;&lt;/li&gt;
+     * &lt;li&gt;quotations of removed lines go back to approved when no other PO uses
+     * them.&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    public JSONObject updateQuotationStatus(String fsStatus)
+            throws SQLException, GuanzonException, CloneNotSupportedException, ParseException {
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        for (POQuotation loQuotation : paQuotationStatus) {</span>
+<span class="nc bnc" id="L288" title="All 3 branches missed.">            switch (fsStatus) {</span>
+                case PurchaseOrderStatus.CONFIRMED: {
+<span class="nc" id="L290">                    loQuotation.setWithParent(true);</span>
+<span class="nc" id="L291">                    JSONObject loJSON = loQuotation.PostTransaction(&quot;&quot;);</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                    if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L293">                        LOG.log(Level.WARNING, &quot;PO quotation posting failed: {0}&quot;, loJSON.get(&quot;message&quot;));</span>
+<span class="nc" id="L294">                        return loJSON;</span>
+                    }
+                    break;
+                }
+                case PurchaseOrderStatus.RETURNED:
+                case PurchaseOrderStatus.VOID:
+                case PurchaseOrderStatus.CANCELLED: {
+<span class="nc" id="L301">                    JSONObject loJSON = releaseQuotation(fsStatus, loQuotation);</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                    if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L303">                        return loJSON;</span>
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+<span class="nc" id="L310">        }</span>
+
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        for (POQuotation loQuotation : paRemovedQuotationStatus) {</span>
+<span class="nc" id="L313">            JSONObject loJSON = releaseQuotation(fsStatus, loQuotation);</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L315">                return loJSON;</span>
+            }
+<span class="nc" id="L317">        }</span>
+<span class="nc" id="L318">        return success();</span>
+    }
+
+    /** Back to approved when no other confirmed/approved PO uses the quotation. */
+    private JSONObject releaseQuotation(String fsStatus, POQuotation foQuotation)
+            throws SQLException, GuanzonException, CloneNotSupportedException, ParseException {
+<span class="nc" id="L324">        JSONObject loUsed = poPO.rules(fsStatus).validateQuotationNotOrdered(foQuotation.Master().getTransactionNo());</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (!isSuccess(loUsed)) {</span>
+<span class="nc" id="L326">            return success(); //used by another PO: leave it</span>
+        }
+<span class="nc" id="L328">        foQuotation.setWithParent(true);</span>
+<span class="nc" id="L329">        JSONObject loJSON = foQuotation.ApproveTransaction(&quot;&quot;);</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L331">            LOG.log(Level.WARNING, &quot;PO quotation approving failed: {0}&quot;, loJSON.get(&quot;message&quot;));</span>
+<span class="nc" id="L332">            return loJSON;</span>
+        }
+<span class="nc" id="L334">        return success();</span>
+    }
+
+    // =====================================================================
+    // Picking sources
+    // =====================================================================
+    /**
+     * Stock requests and approved quotations that can still be ordered for the
+     * PO's industry, company, supplier and category.
+     *
+     * @return &quot;data&quot;: rows with sTransNox, sBranchCd, dTransact, sReferNox,
+     * cTranStat, sBranchNm, total_details, request_type
+     */
+    public JSONObject getAvailableSources() throws SQLException {
+<span class="nc" id="L348">        Model_PO_Master loMaster = poPO.Master();</span>
+
+<span class="nc" id="L350">        String lsStockRequests = MiscUtil.addCondition(PurchaseOrderQueries.stockRequestSources(), String.join(&quot; AND &quot;,</span>
+<span class="nc" id="L351">                &quot;a.sIndstCdx = &quot; + SQLUtil.toSQL(loMaster.getIndustryID()),</span>
+<span class="nc" id="L352">                &quot;e.sCompnyID = &quot; + SQLUtil.toSQL(loMaster.getCompanyID()),</span>
+<span class="nc" id="L353">                &quot;(g.sSupplier = &quot; + SQLUtil.toSQL(loMaster.getSupplierID()) + &quot; OR g.sSupplier IS NULL)&quot;,</span>
+                &quot;b.nApproved &gt; 0&quot;,
+<span class="nc" id="L355">                &quot;a.cProcessd = &quot; + SQLUtil.toSQL(Logical.NO),</span>
+                &quot;b.nApproved &lt;&gt; (b.nIssueQty + b.nOrderQty)&quot;,
+<span class="nc" id="L357">                &quot;c.sCategCd1 = &quot; + SQLUtil.toSQL(loMaster.getCategoryCode()),</span>
+<span class="nc" id="L358">                &quot;a.cTranStat = &quot; + SQLUtil.toSQL(StockRequestStatus.CONFIRMED)));</span>
+        //branches other than main office / warehouse see their own requests only
+<span class="nc bnc" id="L360" title="All 4 branches missed.">        if (!poGRider.isMainOffice() &amp;&amp; !poGRider.isWarehouse()) {</span>
+<span class="nc" id="L361">            lsStockRequests += &quot; AND a.sBranchCd = &quot; + SQLUtil.toSQL(poGRider.getBranchCode());</span>
+        }
+<span class="nc" id="L363">        lsStockRequests += &quot; GROUP BY a.sTransNox&quot;</span>
+                + &quot; HAVING SUM(b.nApproved - (b.nIssueQty + b.nOrderQty)) &gt; 0&quot;;
+
+        //quotations are not filtered by branch (as requested by purchasing)
+<span class="nc" id="L367">        String lsQuotations = PurchaseOrderQueries.quotationSources()</span>
+<span class="nc" id="L368">                + &quot; WHERE &quot; + String.join(&quot; AND &quot;,</span>
+<span class="nc" id="L369">                        &quot;a.sIndstCdx = &quot; + SQLUtil.toSQL(loMaster.getIndustryID()),</span>
+<span class="nc" id="L370">                        &quot;a.sCompnyID = &quot; + SQLUtil.toSQL(loMaster.getCompanyID()),</span>
+<span class="nc" id="L371">                        &quot;a.sSupplier = &quot; + SQLUtil.toSQL(loMaster.getSupplierID()),</span>
+<span class="nc" id="L372">                        &quot;a.sCategrCd = &quot; + SQLUtil.toSQL(loMaster.getCategoryCode()),</span>
+<span class="nc" id="L373">                        &quot;a.cTranStat = &quot; + SQLUtil.toSQL(POQuotationStatus.APPROVED))</span>
+                + &quot; GROUP BY a.sTransNox&quot;;
+
+<span class="nc" id="L376">        String lsSQL = lsStockRequests + &quot; UNION &quot; + lsQuotations + &quot; ORDER BY dTransact, sBranchNm, sTransNox ASC&quot;;</span>
+<span class="nc" id="L377">        LOG.log(Level.FINE, lsSQL);</span>
+
+<span class="nc" id="L379">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L381">            return error(&quot;Query execution failed.&quot;);</span>
+        }
+
+<span class="nc" id="L384">        JSONArray laData = new JSONArray();</span>
+        try {
+<span class="nc bnc" id="L386" title="All 2 branches missed.">            while (loRS.next()) {</span>
+<span class="nc" id="L387">                JSONObject loRow = new JSONObject();</span>
+<span class="nc" id="L388">                loRow.put(&quot;sTransNox&quot;, loRS.getString(&quot;sTransNox&quot;));</span>
+<span class="nc" id="L389">                loRow.put(&quot;sBranchCd&quot;, loRS.getString(&quot;sBranchCd&quot;));</span>
+<span class="nc" id="L390">                loRow.put(&quot;dTransact&quot;, loRS.getDate(&quot;dTransact&quot;));</span>
+<span class="nc" id="L391">                loRow.put(&quot;sReferNox&quot;, loRS.getString(&quot;sReferNox&quot;));</span>
+<span class="nc" id="L392">                loRow.put(&quot;cTranStat&quot;, loRS.getString(&quot;cTranStat&quot;));</span>
+<span class="nc" id="L393">                loRow.put(&quot;sBranchNm&quot;, loRS.getString(&quot;sBranchNm&quot;));</span>
+<span class="nc" id="L394">                loRow.put(&quot;total_details&quot;, loRS.getInt(&quot;total_details&quot;));</span>
+<span class="nc" id="L395">                loRow.put(&quot;request_type&quot;, loRS.getString(&quot;request_type&quot;));</span>
+<span class="nc" id="L396">                laData.add(loRow);</span>
+<span class="nc" id="L397">            }</span>
+        } finally {
+<span class="nc" id="L399">            MiscUtil.close(loRS);</span>
+        }
+
+<span class="nc" id="L402">        JSONObject loJSON = success(&quot;Record loaded successfully.&quot;);</span>
+<span class="nc" id="L403">        loJSON.put(&quot;data&quot;, laData);</span>
+<span class="nc" id="L404">        return loJSON;</span>
+    }
+
+    /** Adds the open items of a confirmed stock request as PO lines (quantity 0). */
+    public JSONObject addStockRequestLines(String fsRequestNo)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L410">        StockRequest loRequest = poWarehouse.get().StockRequest();</span>
+<span class="nc bnc" id="L411" title="All 4 branches missed.">        if (!isSuccess(loRequest.InitTransaction()) || !isSuccess(loRequest.OpenTransaction(fsRequestNo))) {</span>
+<span class="nc" id="L412">            return error(&quot;No records found.&quot;);</span>
+        }
+
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        if (allLinesAdded(loRequest)) {</span>
+<span class="nc" id="L416">            return error(&quot;All stock request details are already in purchase order detail.&quot;);</span>
+        }
+
+<span class="nc" id="L419">        Set&lt;String&gt; loMatching = getMatchingStockRequestItems();</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">        if (loMatching == null) {</span>
+<span class="nc" id="L421">            return error(&quot;Query execution failed.&quot;);</span>
+        }
+<span class="nc" id="L423">        boolean lbAllProcessed = true;</span>
+
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; loRequest.getDetailCount(); lnCtr++) {</span>
+<span class="nc" id="L426">            String lsStockId = loRequest.Detail(lnCtr).getStockId();</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">            if (!loMatching.contains(lsStockId)) {</span>
+<span class="nc" id="L428">                continue;</span>
+            }
+
+<span class="nc" id="L431">            double lnApproved = loRequest.Detail(lnCtr).getApproved();</span>
+<span class="nc" id="L432">            double lnServed = loRequest.Detail(lnCtr).getIssued() + loRequest.Detail(lnCtr).getPurchase();</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">            if (lnApproved != lnServed) {</span>
+<span class="nc" id="L434">                lbAllProcessed = false;</span>
+            }
+
+<span class="nc bnc" id="L437" title="All 4 branches missed.">            if (hasLine(loRequest.Detail(lnCtr).getTransactionNo(), lsStockId) || lnApproved - lnServed &lt;= 0) {</span>
+<span class="nc" id="L438">                continue;</span>
+            }
+
+            //adds a row when the last row is used; otherwise the empty last row is filled
+<span class="nc" id="L442">            poRowAdder.addRow();</span>
+<span class="nc" id="L443">            Model_PO_Detail loLine = poPO.Detail(poPO.getDetailCount() - 1);</span>
+<span class="nc" id="L444">            loLine.setSouceNo(loRequest.Detail(lnCtr).getTransactionNo());</span>
+<span class="nc" id="L445">            loLine.setTransactionNo(loRequest.Detail(lnCtr).getTransactionNo());</span>
+<span class="nc" id="L446">            loLine.setEntryNo(loRequest.Detail(lnCtr).getEntryNumber());</span>
+<span class="nc" id="L447">            loLine.setStockID(lsStockId);</span>
+<span class="nc" id="L448">            loLine.setRecordOrder(0);</span>
+<span class="nc" id="L449">            loLine.setUnitPrice(loRequest.Detail(lnCtr).Inventory().getCost().doubleValue());</span>
+<span class="nc" id="L450">            loLine.setQuantity(0);</span>
+            //stock-request lines are marked InvR so status changes update the request
+<span class="nc" id="L452">            loLine.setSouceCode(PurchaseOrderStatus.SourceCode.STOCKREQUEST);</span>
+        }
+
+<span class="nc bnc" id="L455" title="All 2 branches missed.">        if (lbAllProcessed) {</span>
+<span class="nc" id="L456">            return error(&quot;All records are already processed!&quot;);</span>
+        }
+<span class="nc" id="L458">        return success(&quot;Record loaded successfully.&quot;);</span>
+    }
+
+    /** Items of confirmed stock requests matching the PO; null when the query fails. */
+    private Set&lt;String&gt; getMatchingStockRequestItems() throws SQLException {
+<span class="nc" id="L463">        Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc" id="L464">        String lsSQL = MiscUtil.addCondition(PurchaseOrderQueries.stockRequestItems(), String.join(&quot; AND &quot;,</span>
+<span class="nc" id="L465">                &quot;a.sIndstCdx LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + loMaster.getIndustryID()),</span>
+<span class="nc" id="L466">                &quot;e.sCompnyID LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + loMaster.getCompanyID()),</span>
+<span class="nc" id="L467">                &quot;h.sCategrCd LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + loMaster.getCategoryCode()),</span>
+<span class="nc" id="L468">                &quot;g.sSupplier LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + loMaster.getSupplierID()),</span>
+                &quot;b.nApproved &gt; 0&quot;,
+<span class="nc" id="L470">                &quot;a.cTranStat = &quot; + SQLUtil.toSQL(Logical.YES)));</span>
+<span class="nc" id="L471">        LOG.log(Level.FINE, lsSQL);</span>
+
+<span class="nc" id="L473">        Set&lt;String&gt; loIds = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L474">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L476">            return null;</span>
+        }
+        try {
+<span class="nc bnc" id="L479" title="All 2 branches missed.">            while (loRS.next()) {</span>
+<span class="nc" id="L480">                loIds.add(loRS.getString(&quot;sStockIDx&quot;));</span>
+            }
+        } finally {
+<span class="nc" id="L483">            MiscUtil.close(loRS);</span>
+        }
+<span class="nc" id="L485">        return loIds;</span>
+    }
+
+    private boolean allLinesAdded(StockRequest foRequest) {
+<span class="nc bnc" id="L489" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; foRequest.getDetailCount(); lnCtr++) {</span>
+<span class="nc bnc" id="L490" title="All 2 branches missed.">            if (!hasLine(foRequest.Detail(lnCtr).getTransactionNo(), foRequest.Detail(lnCtr).getStockId())) {</span>
+<span class="nc" id="L491">                return false;</span>
+            }
+        }
+<span class="nc" id="L494">        return true;</span>
+    }
+
+    /** Whether the PO already has a line for this source document item. */
+    private boolean hasLine(String fsSourceNo, String fsStockId) {
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        for (int lnRow = 0; lnRow &lt; poPO.getDetailCount(); lnRow++) {</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">            if (Objects.equals(poPO.Detail(lnRow).getSouceNo(), fsSourceNo)</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">                    &amp;&amp; Objects.equals(poPO.Detail(lnRow).getStockID(), fsStockId)) {</span>
+<span class="nc" id="L502">                return true;</span>
+            }
+        }
+<span class="nc" id="L505">        return false;</span>
+    }
+
+    /**
+     * Adds the lines of an approved PO quotation. Unit prices are net of the
+     * line discounts, with the quotation's VAT and header discounts spread
+     * evenly across the lines.
+     *
+     * &lt;p&gt;
+     * NOTE: kept exactly as before (double arithmetic, even split per line).
+     * Whether header discounts and VAT should be split by line value instead
+     * is a question for accounting; change it here once decided.&lt;/p&gt;
+     */
+    public JSONObject addQuotationLines(String fsQuotationNo)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc" id="L520">        POQuotation loQuotation = poQuotations.get().POQuotation();</span>
+<span class="nc bnc" id="L521" title="All 4 branches missed.">        if (!isSuccess(loQuotation.InitTransaction()) || !isSuccess(loQuotation.OpenTransaction(fsQuotationNo))) {</span>
+<span class="nc" id="L522">            return error(&quot;No records found.&quot;);</span>
+        }
+
+<span class="nc bnc" id="L525" title="All 2 branches missed.">        if (allLinesAdded(loQuotation)) {</span>
+<span class="nc" id="L526">            return error(&quot;All PO Quotation details are already in purchase order detail.&quot;);</span>
+        }
+
+        //a quotation may feed only one PO (rule in the validator)
+<span class="nc" id="L530">        JSONObject loJSON = poPO.rules().validateQuotationNotOrdered(fsQuotationNo);</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">        if (&quot;error&quot;.equals(loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L532">            return loJSON;</span>
+        }
+
+<span class="nc" id="L535">        int lnLines = loQuotation.getDetailCount();</span>
+<span class="nc" id="L536">        double ldblVATAmount = 0.0000;</span>
+<span class="nc" id="L537">        double ldblDiscountAmt = 0.0000;</span>
+<span class="nc" id="L538">        double ldblDiscountRateAmt = 0.0000;</span>
+<span class="nc" id="L539">        double ldblRemainingDiscount = 0.0000;</span>
+<span class="nc bnc" id="L540" title="All 2 branches missed.">        if (loQuotation.Master().getVatAmount() &gt; 0.0000) {</span>
+<span class="nc" id="L541">            ldblVATAmount = loQuotation.Master().getVatAmount() / lnLines;</span>
+        }
+<span class="nc bnc" id="L543" title="All 2 branches missed.">        if (loQuotation.Master().getAdditionalDiscountAmount() &gt; 0.0000) {</span>
+<span class="nc" id="L544">            ldblDiscountAmt = loQuotation.Master().getAdditionalDiscountAmount() / lnLines;</span>
+        }
+<span class="nc bnc" id="L546" title="All 2 branches missed.">        if (loQuotation.Master().getDiscountRate() &gt; 0) {</span>
+<span class="nc" id="L547">            ldblDiscountRateAmt = loQuotation.Master().getGrossAmount() * (loQuotation.Master().getDiscountRate() / 100) / lnLines;</span>
+        }
+
+<span class="nc bnc" id="L550" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; lnLines; lnCtr++) {</span>
+<span class="nc" id="L551">            String lsStockId = quotedStockId(loQuotation, lnCtr);</span>
+            double ldblMasterDiscount;
+            double ldblUnitPrice;
+
+<span class="nc bnc" id="L555" title="All 2 branches missed.">            if (!hasLine(loQuotation.Detail(lnCtr).getTransactionNo(), lsStockId)) {</span>
+<span class="nc" id="L556">                double lnQuantity = loQuotation.Detail(lnCtr).getQuantity();</span>
+<span class="nc" id="L557">                int lnLastIndex = poPO.getDetailCount() - 1;</span>
+<span class="nc" id="L558">                Model_PO_Detail loLine = poPO.Detail(lnLastIndex);</span>
+<span class="nc" id="L559">                loLine.setSouceNo(loQuotation.Detail(lnCtr).getTransactionNo());</span>
+<span class="nc" id="L560">                loLine.setTransactionNo(loQuotation.Detail(lnCtr).getTransactionNo());</span>
+<span class="nc" id="L561">                loLine.setRecordOrder(loQuotation.Detail(lnCtr).getQuantity());</span>
+<span class="nc" id="L562">                loLine.setUnitPrice(loQuotation.Detail(lnCtr).getUnitPrice());</span>
+<span class="nc" id="L563">                loLine.setQuantity(loQuotation.Detail(lnCtr).getQuantity());</span>
+<span class="nc" id="L564">                loLine.setSouceCode(loQuotation.getSourceCode());</span>
+<span class="nc" id="L565">                loLine.setStockID(lsStockId);</span>
+
+                //line discount
+<span class="nc" id="L568">                double ldblDetailDiscountRate = 0.0000;</span>
+<span class="nc bnc" id="L569" title="All 2 branches missed.">                if (loQuotation.Detail(lnCtr).getDiscountRate() &gt; 0.00) {</span>
+<span class="nc" id="L570">                    ldblDetailDiscountRate = loQuotation.Detail(lnCtr).getUnitPrice() * (loQuotation.Detail(lnCtr).getDiscountRate() / 100);</span>
+                }
+<span class="nc" id="L572">                ldblUnitPrice = loQuotation.Detail(lnCtr).getUnitPrice() - (ldblDetailDiscountRate + loQuotation.Detail(lnCtr).getDiscountAmount());</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">                if (loQuotation.Master().isVatable()) {</span>
+<span class="nc" id="L574">                    ldblUnitPrice = ldblUnitPrice + (ldblVATAmount / lnQuantity);</span>
+                }
+
+                //header discount per unit; what does not fit carries over to the next line
+<span class="nc" id="L578">                ldblMasterDiscount = (ldblDiscountAmt + ldblDiscountRateAmt + ldblRemainingDiscount) / lnQuantity;</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">                if (ldblMasterDiscount &gt; ldblUnitPrice) {</span>
+<span class="nc" id="L580">                    ldblRemainingDiscount = (ldblDiscountAmt + ldblDiscountRateAmt + ldblRemainingDiscount) - (ldblUnitPrice * lnQuantity);</span>
+<span class="nc" id="L581">                    ldblUnitPrice = 0.0000;</span>
+                } else {
+<span class="nc" id="L583">                    ldblRemainingDiscount = 0.0000;</span>
+<span class="nc" id="L584">                    ldblUnitPrice = ldblUnitPrice - ldblMasterDiscount;</span>
+                }
+
+<span class="nc" id="L587">                loLine.setUnitPrice(ldblUnitPrice);</span>
+<span class="nc" id="L588">                poRowAdder.addRow();</span>
+            }
+
+            //after the last line: spread any discount left over the lines that still have a price
+<span class="nc bnc" id="L592" title="All 4 branches missed.">            if (lnCtr == lnLines - 1 &amp;&amp; ldblRemainingDiscount &gt; 0.0000) {</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">                for (int lnRow = 0; lnRow &lt; poPO.getDetailCount(); lnRow++) {</span>
+<span class="nc" id="L594">                    Model_PO_Detail loLine = poPO.Detail(lnRow);</span>
+<span class="nc bnc" id="L595" title="All 2 branches missed.">                    if (Objects.equals(loLine.getSouceNo(), loQuotation.Master().getTransactionNo())</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">                            &amp;&amp; Objects.equals(loLine.getSouceCode(), loQuotation.getSourceCode())</span>
+<span class="nc bnc" id="L597" title="All 2 branches missed.">                            &amp;&amp; loLine.getUnitPrice().doubleValue() &gt; 0.0000) {</span>
+<span class="nc" id="L598">                        ldblUnitPrice = loLine.getUnitPrice().doubleValue();</span>
+<span class="nc" id="L599">                        ldblMasterDiscount = ldblRemainingDiscount / loLine.getRecordOrder().doubleValue();</span>
+<span class="nc bnc" id="L600" title="All 2 branches missed.">                        if (ldblMasterDiscount &gt; ldblUnitPrice) {</span>
+<span class="nc" id="L601">                            ldblRemainingDiscount = ldblRemainingDiscount - (ldblUnitPrice * loLine.getRecordOrder().doubleValue());</span>
+<span class="nc" id="L602">                            ldblUnitPrice = 0.0000;</span>
+                        } else {
+<span class="nc" id="L604">                            ldblRemainingDiscount = 0.0000;</span>
+<span class="nc" id="L605">                            ldblUnitPrice = ldblUnitPrice - ldblMasterDiscount;</span>
+                        }
+<span class="nc" id="L607">                        loLine.setUnitPrice(ldblUnitPrice);</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">                        if (ldblRemainingDiscount &lt;= 0.0000) {</span>
+<span class="nc" id="L609">                            break;</span>
+                        }
+                    }
+                }
+            }
+        }
+
+<span class="nc" id="L616">        return success(&quot;Record loaded successfully.&quot;);</span>
+    }
+
+    /** The quoted item, or its replacement when the supplier offered one. */
+    private static String quotedStockId(POQuotation foQuotation, int fnRow) {
+<span class="nc" id="L621">        String lsReplace = foQuotation.Detail(fnRow).getReplaceId();</span>
+<span class="nc bnc" id="L622" title="All 4 branches missed.">        return lsReplace != null &amp;&amp; !lsReplace.isEmpty() ? lsReplace : foQuotation.Detail(fnRow).getStockId();</span>
+    }
+
+    private boolean allLinesAdded(POQuotation foQuotation) {
+<span class="nc bnc" id="L626" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; foQuotation.getDetailCount(); lnCtr++) {</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">            if (!hasLine(foQuotation.Detail(lnCtr).getTransactionNo(), quotedStockId(foQuotation, lnCtr))) {</span>
+<span class="nc" id="L628">                return false;</span>
+            }
+        }
+<span class="nc" id="L631">        return true;</span>
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

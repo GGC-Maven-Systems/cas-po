@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderQueries.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderQueries.java</span></div><h1>PurchaseOrderQueries.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import java.util.StringJoiner;
+import org.guanzon.appdriver.base.SQLUtil;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+
+/**
+ * The Purchase Order controller SQL in one place.
+ *
+ * &lt;p&gt;
+ * Base queries here; the controllers add their filters with
+ * {@code MiscUtil.addCondition} and the status helpers below. Values are
+ * always quoted with {@link SQLUtil#toSQL(Object)}. (The validator and
+ * {@link PurchaseOrderAudit} keep their own few queries next to the rules that
+ * use them.)&lt;/p&gt;
+ */
+public final class PurchaseOrderQueries {
+
+    private PurchaseOrderQueries() {
+    }
+
+    // =====================================================================
+    // Status filters
+    // =====================================================================
+    /**
+     * &quot;col = '1'&quot; or &quot;col IN ('1', '5')&quot; for a string of one-character status
+     * codes; empty when fsCodes is empty.
+     */
+    public static String statusIn(String fsColumn, String fsCodes) {
+<span class="fc bfc" id="L30" title="All 4 branches covered.">        if (fsCodes == null || fsCodes.isEmpty()) {</span>
+<span class="fc" id="L31">            return &quot;&quot;;</span>
+        }
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (fsCodes.length() == 1) {</span>
+<span class="fc" id="L34">            return fsColumn + &quot; = &quot; + SQLUtil.toSQL(fsCodes);</span>
+        }
+<span class="fc" id="L36">        return fsColumn + &quot; IN (&quot; + quoteEach(fsCodes) + &quot;)&quot;;</span>
+    }
+
+    /**
+     * Status filter that also matches the pending letters (64 + code) of
+     * fsPendingCodes: &quot;( col IN (...) OR (ASCII(col) - 64) IN (...) )&quot;.
+     * Empty when fsCodes is empty.
+     */
+    public static String statusOrPending(String fsColumn, String fsCodes, String fsPendingCodes) {
+<span class="fc bfc" id="L45" title="All 4 branches covered.">        if (fsCodes == null || fsCodes.isEmpty()) {</span>
+<span class="fc" id="L46">            return &quot;&quot;;</span>
+        }
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">        String lsPending = fsPendingCodes == null || fsPendingCodes.isEmpty()</span>
+                ? &quot;&quot;
+<span class="fc" id="L50">                : &quot; OR (ASCII(&quot; + fsColumn + &quot;) - 64) IN (&quot; + quoteEach(fsPendingCodes) + &quot;)&quot;;</span>
+<span class="fc" id="L51">        return &quot;( &quot; + statusIn(fsColumn, fsCodes) + lsPending + &quot; )&quot;;</span>
+    }
+
+    private static String quoteEach(String fsCodes) {
+<span class="fc" id="L55">        StringJoiner loList = new StringJoiner(&quot;, &quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (char lcCode : fsCodes.toCharArray()) {</span>
+<span class="fc" id="L57">            loList.add(SQLUtil.toSQL(Character.toString(lcCode)));</span>
+        }
+<span class="fc" id="L59">        return loList.toString();</span>
+    }
+
+    // =====================================================================
+    // Purchase orders
+    // =====================================================================
+    /** Browse dialog (SearchTransaction). */
+    public static String browse() {
+<span class="fc" id="L67">        return &quot;SELECT&quot;</span>
+                + &quot;  a.sTransNox&quot;
+                + &quot;, a.dTransact&quot;
+                + &quot;, b.sDescript&quot;
+                + &quot;, c.sCompnyNm&quot;
+                + &quot;, e.sCompnyNm&quot;
+                + &quot;, f.sDescript&quot;
+                + &quot;, a.sBranchCd&quot;
+                + &quot;, a.sReferNox&quot;
+                + &quot; FROM PO_Master a&quot;
+                + &quot; LEFT JOIN Industry b ON a.sIndstCdx = b.sIndstCdx&quot;
+                + &quot; LEFT JOIN Company c ON c.sCompnyID = a.sCompnyID&quot;
+                + &quot; LEFT JOIN Client_Master e ON a.sSupplier = e.sClientID&quot;
+                + &quot; JOIN Category f ON a.sCategrCd = f.sCategrCd&quot;;
+    }
+
+    /** Purchase order list (getPurchaseOrder / getConfirmedPurchaseOrder). */
+    public static String purchaseOrderList() {
+<span class="fc" id="L85">        return &quot;SELECT&quot;</span>
+                + &quot;  a.sTransNox&quot;
+                + &quot;, c.sBranchNm&quot;
+                + &quot;, a.sBranchCd&quot;
+                + &quot;, a.dTransact&quot;
+                + &quot;, a.cTranStat&quot;
+                + &quot;, e.sCompnyNm&quot;
+                + &quot; FROM PO_Master a&quot;
+                + &quot; LEFT JOIN Branch c ON a.sBranchCd = c.sBranchCd&quot;
+                + &quot; LEFT JOIN Client_Master e ON e.sClientID = a.sSupplier&quot;;
+    }
+
+    /** Most recent earlier status of a purchase order (RevertStatus). */
+    public static String previousStatus(String fsTransNo, String fsTable, String fsCurrentStatus) {
+<span class="fc" id="L99">        return &quot;SELECT cRefrStat&quot;</span>
+                + &quot; FROM Transaction_Status_History&quot;
+<span class="fc" id="L101">                + &quot; WHERE sSourceNo = &quot; + SQLUtil.toSQL(fsTransNo)</span>
+<span class="fc" id="L102">                + &quot; AND sTableNme = &quot; + SQLUtil.toSQL(fsTable)</span>
+<span class="fc" id="L103">                + &quot; AND cRefrStat &lt;&gt; &quot; + SQLUtil.toSQL(fsCurrentStatus)</span>
+                + &quot; ORDER BY sTransNox DESC LIMIT 1&quot;;
+    }
+
+    /** Saved detail lines of a purchase order, in entry order (returned-PO check). */
+    public static String savedLines(String fsTransNo) {
+<span class="fc" id="L109">        return &quot;SELECT sStockIDx, nQuantity&quot;</span>
+                + &quot; FROM PO_Detail&quot;
+<span class="fc" id="L111">                + &quot; WHERE sTransNox = &quot; + SQLUtil.toSQL(fsTransNo)</span>
+                + &quot; ORDER BY nEntryNox&quot;;
+    }
+
+    /** Inventory type of an industry + category. */
+    public static String inventoryType(String fsIndustryId, String fsCategoryCode) {
+<span class="fc" id="L117">        return &quot;SELECT a.sInvTypCd&quot;</span>
+                + &quot; FROM Category a&quot;
+<span class="fc" id="L119">                + &quot; WHERE a.sIndstCdx = &quot; + SQLUtil.toSQL(fsIndustryId)</span>
+<span class="fc" id="L120">                + &quot; AND a.sCategrCd = &quot; + SQLUtil.toSQL(fsCategoryCode);</span>
+    }
+
+    // =====================================================================
+    // Source documents
+    // =====================================================================
+    /** Stock requests that can be ordered (part 1 of the source list). */
+    public static String stockRequestSources() {
+<span class="nc" id="L128">        return &quot;SELECT&quot;</span>
+                + &quot;  a.sTransNox AS sTransNox&quot;
+                + &quot;, e.sBranchNm AS sBranchNm&quot;
+                + &quot;, a.sBranchCd&quot;
+                + &quot;, a.cTranStat&quot;
+                + &quot;, a.dTransact AS dTransact&quot;
+                + &quot;, a.sReferNox&quot;
+                + &quot;, a.sIndstCdx&quot;
+                + &quot;, COUNT(DISTINCT b.sStockIDx) AS total_details&quot;
+                + &quot;, SUM(b.nApproved - (b.nIssueQty + b.nOrderQty)) AS total_request&quot;
+<span class="nc" id="L138">                + &quot;, &quot; + SQLUtil.toSQL(PurchaseOrderStatus.SourceCode.STOCKREQUEST) + &quot; AS request_type&quot;</span>
+                + &quot; FROM Inv_Stock_Request_Master a&quot;
+                + &quot; LEFT JOIN Inv_Stock_Request_Detail b ON a.sTransNox = b.sTransNox&quot;
+                + &quot; LEFT JOIN Inventory c ON b.sStockIDx = c.sStockIDx&quot;
+                + &quot; LEFT JOIN Branch e ON a.sBranchCd = e.sBranchCd&quot;
+                + &quot; LEFT JOIN Inv_Supplier g ON g.sStockIDx = c.sStockIDx&quot;;
+    }
+
+    /** Approved PO quotations (part 2 of the source list). */
+    public static String quotationSources() {
+<span class="nc" id="L148">        return &quot;SELECT&quot;</span>
+                + &quot;  a.sTransNox AS sTransNox&quot;
+                + &quot;, e.sBranchNm AS sBranchNm&quot;
+                + &quot;, a.sBranchCd&quot;
+                + &quot;, a.cTranStat&quot;
+                + &quot;, a.dTransact AS dTransact&quot;
+                + &quot;, a.sReferNox&quot;
+                + &quot;, a.sIndstCdx&quot;
+                + &quot;, COUNT(DISTINCT b.sStockIDx) AS total_details&quot;
+                + &quot;, SUM(b.nQuantity) AS total_request&quot;
+<span class="nc" id="L158">                + &quot;, &quot; + SQLUtil.toSQL(PurchaseOrderStatus.SourceCode.POQUOTATION) + &quot; AS request_type&quot;</span>
+                + &quot; FROM PO_Quotation_Master a&quot;
+                + &quot; LEFT JOIN PO_Quotation_Detail b ON a.sTransNox = b.sTransNox&quot;
+                + &quot; LEFT JOIN Branch e ON a.sBranchCd = e.sBranchCd&quot;;
+    }
+
+    /** Items of confirmed stock requests that match the PO (addStockRequestOrdersToPODetail). */
+    public static String stockRequestItems() {
+<span class="nc" id="L166">        return &quot;SELECT b.sStockIDx&quot;</span>
+                + &quot; FROM Inv_Stock_Request_Master a&quot;
+                + &quot; LEFT JOIN Branch e ON a.sBranchCd = e.sBranchCd&quot;
+                + &quot; LEFT JOIN Inv_Stock_Request_Detail b ON a.sTransNox = b.sTransNox&quot;
+                + &quot; LEFT JOIN Inventory c ON b.sStockIDx = c.sStockIDx&quot;
+                + &quot; LEFT JOIN Inv_Supplier g ON g.sStockIDx = c.sStockIDx&quot;
+                + &quot; LEFT JOIN Category h ON h.sCategrCd = c.sCategCd1&quot;;
+    }
+
+    /**
+     * Total quantity already ordered for one source document item by confirmed
+     * or approved purchase orders (optionally excluding one PO).
+     */
+    public static String orderedQuantity(String fsSourceNo, String fsStockId, String fsSourceCode, String fsExcludeTransNo) {
+<span class="fc" id="L180">        return &quot;SELECT IFNULL(SUM(b.nQuantity), 0) AS nQuantity&quot;</span>
+                + &quot; FROM PO_Master a&quot;
+                + &quot; JOIN PO_Detail b ON b.sTransNox = a.sTransNox&quot;
+<span class="fc" id="L183">                + &quot; WHERE b.sSourceNo = &quot; + SQLUtil.toSQL(fsSourceNo)</span>
+<span class="fc" id="L184">                + &quot; AND b.sStockIDx = &quot; + SQLUtil.toSQL(fsStockId)</span>
+<span class="fc" id="L185">                + &quot; AND b.sSourceCd = &quot; + SQLUtil.toSQL(fsSourceCode)</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">                + &quot; AND &quot; + statusIn(&quot;a.cTranStat&quot;, PurchaseOrderStatus.CONFIRMED + PurchaseOrderStatus.APPROVED)</span>
+<span class="fc" id="L187">                + (fsExcludeTransNo == null ? &quot;&quot; : &quot; AND a.sTransNox &lt;&gt; &quot; + SQLUtil.toSQL(fsExcludeTransNo));</span>
+    }
+
+    // =====================================================================
+    // Reports
+    // =====================================================================
+    /** Summary report (one row per PO). Filters use alias a = PO_Master. */
+    public static String summaryReport() {
+<span class="fc" id="L195">        return &quot;SELECT DISTINCT&quot;</span>
+                + &quot;  g.sCompnyNm AS Supplier&quot;
+                + &quot;, c.sBranchNm AS Destination&quot;
+                + &quot;, d.sBranchNm AS Branch&quot;
+                + &quot;, a.sTransNox&quot;
+                + &quot;, a.sReferNox&quot;
+                + &quot;, a.dTransact&quot;
+                + &quot;, e.sDescript AS Category&quot;
+                + &quot;, f.sDescript AS Term&quot;
+                + &quot;, a.nTranTotl&quot;
+                + &quot;, a.cTranStat&quot;
+                + &quot; FROM PO_Master a&quot;
+                + &quot; LEFT JOIN AP_Client_Master b ON a.sSupplier = b.sClientID&quot;
+                + &quot; LEFT JOIN Branch c ON a.sDestinat = c.sBranchCd&quot;
+                + &quot; LEFT JOIN Branch d ON a.sBranchCd = d.sBranchCd&quot;
+                + &quot; LEFT JOIN Category e ON a.sCategrCd = e.sCategrCd&quot;
+                + &quot; LEFT JOIN Term f ON a.sTermCode = f.sTermCode&quot;
+                + &quot; LEFT JOIN Client_Master g ON b.sClientID = g.sClientID&quot;;
+    }
+
+    /** Detailed report (one row per PO line). Filters use alias b = PO_Master, a = PO_Detail. */
+    public static String detailedReport() {
+<span class="fc" id="L217">        return &quot;SELECT DISTINCT&quot;</span>
+                + &quot;  h.sCompnyNm AS Supplier&quot;
+                + &quot;, d.sBranchNm AS Destination&quot;
+                + &quot;, b.sTransNox&quot;
+                + &quot;, b.dTransact&quot;
+                + &quot;, j.sDescript AS Brand&quot;
+                + &quot;, k.sModelCde AS ModelCode&quot;
+                + &quot;, k.sDescript AS ModelName&quot;
+                + &quot;, l.sDescript AS Color&quot;
+                + &quot;, a.nQuantity&quot;
+                + &quot;, a.nReceived&quot;
+                + &quot;, a.nCancelld&quot;
+                + &quot;, i.nUnitPrce&quot;
+                + &quot;, i.sBarCodex&quot;
+                + &quot;, i.sDescript AS Description&quot;
+                + &quot;, ROUND(a.nQuantity * i.nUnitPrce, 4) AS Total&quot;
+                + &quot; FROM PO_Detail a&quot;
+                + &quot; LEFT JOIN PO_Master b ON a.sTransNox = b.sTransNox&quot;
+                + &quot; LEFT JOIN AP_Client_Master c ON b.sSupplier = c.sClientID&quot;
+                + &quot; LEFT JOIN Branch d ON b.sDestinat = d.sBranchCd&quot;
+                + &quot; LEFT JOIN Client_Master h ON c.sClientID = h.sClientID&quot;
+                + &quot; LEFT JOIN Inventory i ON a.sStockIDx = i.sStockIDx&quot;
+                + &quot; LEFT JOIN Brand j ON i.sBrandIDx = j.sBrandIDx&quot;
+                + &quot; LEFT JOIN Model k ON i.sModelIDx = k.sModelIDx&quot;
+                + &quot; LEFT JOIN Color l ON i.sColorIDx = l.sColorIDx&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

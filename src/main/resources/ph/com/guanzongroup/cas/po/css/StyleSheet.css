@@ -1024,3 +1024,11 @@
     -fx-background-insets: 2;
 }
 
+/* Searchable fields (Enter / F3 open the search, typing shows suggestions):
+   a magnifier at the right, text kept clear of it. */
+.text-field.search-field {
+    -fx-background-image: url("search-field.png");
+    -fx-background-repeat: no-repeat;
+    -fx-background-position: right center;
+    -fx-padding: 0.333333em 24px 0.333333em 0.583em;
+}

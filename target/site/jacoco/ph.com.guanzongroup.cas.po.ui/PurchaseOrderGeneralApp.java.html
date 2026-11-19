@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderGeneralApp.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui</a> &gt; <span class="el_source">PurchaseOrderGeneralApp.java</span></div><h1>PurchaseOrderGeneralApp.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.ui;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.Optional;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.fxml.FXMLLoader;
+import javafx.geometry.Rectangle2D;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.control.ChoiceDialog;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.RecordStatus;
+
+/**
+ * Runs the General Inventory Purchase Order screens on their own, for testing
+ * the new controller without the integsys dashboard.
+ *
+ * &lt;p&gt;
+ * Screen: -Dpo.screen=entry (default), confirmation or history. Without it,
+ * a small window asks which one to open.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Connects the same way as testPurchaseOrder ({@code MiscUtil.Connect()} with
+ * the metadata in {@code &lt;config&gt;/config/metadata/new/}) and loads the same
+ * cas.properties settings as integsys' Login.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Industry and category are the ones the integsys menu passes to the screen
+ * (xxxSysMenuOthers row of PurchaseOrder_Entry/Confirmation/HistoryController), so the searches
+ * use the same filters as in integsys. When there is no such row, they come
+ * from user.selected.industry / category in cas.properties. Override with
+ * -Dpo.industry=... / -Dpo.category=... . Company comes from
+ * user.selected.company. The values used are printed on the console.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * In NetBeans: right-click this file, Run File.&lt;/p&gt;
+ */
+<span class="nc" id="L50">public class PurchaseOrderGeneralApp extends Application {</span>
+
+    private static final String VIEWS = &quot;/ph/com/guanzongroup/cas/po/ui/&quot;;
+    private static final String TITLE = &quot;Purchase Order - General (new controller)&quot;;
+
+    private static GRiderCAS poApp;
+
+    public static void main(String[] args) {
+<span class="nc" id="L58">        boolean lbWindows = System.getProperty(&quot;os.name&quot;).toLowerCase().contains(&quot;win&quot;);</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        String lsConfig = lbWindows ? &quot;D:/GGC_Maven_Systems&quot; : &quot;/srv/GGC_Maven_Systems&quot;;</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        String lsTemp = lbWindows ? &quot;D:/temp&quot; : &quot;/srv/temp&quot;;</span>
+
+<span class="nc" id="L62">        System.setProperty(&quot;sys.default.path.config&quot;, lsConfig);</span>
+<span class="nc" id="L63">        System.setProperty(&quot;sys.default.path.metadata&quot;, lsConfig + &quot;/config/metadata/new/&quot;);</span>
+<span class="nc" id="L64">        System.setProperty(&quot;sys.default.path.temp&quot;, lsTemp);</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (!loadProperties(lsConfig)) {</span>
+<span class="nc" id="L67">            System.err.println(&quot;Unable to load &quot; + lsConfig + &quot;/config/cas.properties.&quot;);</span>
+<span class="nc" id="L68">            System.exit(1);</span>
+        }
+
+<span class="nc" id="L71">        poApp = MiscUtil.Connect();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (poApp == null) {</span>
+<span class="nc" id="L73">            System.err.println(&quot;Unable to connect to the database.&quot;);</span>
+<span class="nc" id="L74">            System.exit(1);</span>
+        }
+
+<span class="nc" id="L77">        launch(args);</span>
+<span class="nc" id="L78">    }</span>
+
+    @Override
+    public void start(Stage foStage) throws Exception {
+<span class="nc" id="L82">        String lsScreen = System.getProperty(&quot;po.screen&quot;);</span>
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        if (lsScreen == null || lsScreen.trim().isEmpty()) {</span>
+<span class="nc" id="L84">            ChoiceDialog&lt;String&gt; loDialog = new ChoiceDialog&lt;&gt;(&quot;entry&quot;, &quot;entry&quot;, &quot;confirmation&quot;, &quot;history&quot;);</span>
+<span class="nc" id="L85">            loDialog.setTitle(TITLE);</span>
+<span class="nc" id="L86">            loDialog.setHeaderText(&quot;Which Purchase Order screen?&quot;);</span>
+<span class="nc" id="L87">            loDialog.setContentText(&quot;Screen:&quot;);</span>
+<span class="nc" id="L88">            Optional&lt;String&gt; loChoice = loDialog.showAndWait();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">            if (!loChoice.isPresent()) {</span>
+<span class="nc" id="L90">                Platform.exit();</span>
+<span class="nc" id="L91">                return;</span>
+            }
+<span class="nc" id="L93">            lsScreen = loChoice.get();</span>
+        }
+
+        ScreenInterface loController;
+        String lsFxml;
+        String lsTitle;
+        String lsMenuController; //the integsys screen whose menu item gives industry/category
+<span class="nc bnc" id="L100" title="All 3 branches missed.">        switch (lsScreen.trim().toLowerCase()) {</span>
+            case &quot;confirmation&quot;:
+<span class="nc" id="L102">                loController = new PurchaseOrderGeneral_ConfirmationController();</span>
+<span class="nc" id="L103">                lsFxml = &quot;PurchaseOrderGeneral_Confirmation.fxml&quot;;</span>
+<span class="nc" id="L104">                lsTitle = &quot;Purchase Order Confirmation - General (new controller)&quot;;</span>
+<span class="nc" id="L105">                lsMenuController = &quot;PurchaseOrder_ConfirmationController&quot;;</span>
+<span class="nc" id="L106">                break;</span>
+            case &quot;history&quot;:
+<span class="nc" id="L108">                loController = new PurchaseOrderGeneral_HistoryController();</span>
+<span class="nc" id="L109">                lsFxml = &quot;PurchaseOrderGeneral_History.fxml&quot;;</span>
+<span class="nc" id="L110">                lsTitle = &quot;Purchase Order History - General (new controller)&quot;;</span>
+<span class="nc" id="L111">                lsMenuController = &quot;PurchaseOrder_HistoryController&quot;;</span>
+<span class="nc" id="L112">                break;</span>
+            default:
+<span class="nc" id="L114">                loController = new PurchaseOrderGeneral_EntryController();</span>
+<span class="nc" id="L115">                lsFxml = &quot;PurchaseOrderGeneral_Entry.fxml&quot;;</span>
+<span class="nc" id="L116">                lsTitle = TITLE;</span>
+<span class="nc" id="L117">                lsMenuController = &quot;PurchaseOrder_EntryController&quot;;</span>
+        }
+<span class="nc" id="L119">        loController.setGRider(poApp);</span>
+<span class="nc" id="L120">        String[] laMenu = menuIndustryAndCategory(lsMenuController);</span>
+<span class="nc" id="L121">        String lsIndustry = System.getProperty(&quot;po.industry&quot;, laMenu[0]);</span>
+<span class="nc" id="L122">        String lsCategory = System.getProperty(&quot;po.category&quot;, laMenu[1]);</span>
+<span class="nc" id="L123">        String lsCompany = System.getProperty(&quot;user.selected.company&quot;, &quot;&quot;);</span>
+<span class="nc" id="L124">        System.out.println(&quot;Purchase Order screen: industry=&quot; + lsIndustry</span>
+                + &quot;, category=&quot; + lsCategory + &quot;, company=&quot; + lsCompany);
+
+<span class="nc" id="L127">        loController.setIndustryID(lsIndustry);</span>
+<span class="nc" id="L128">        loController.setCompanyID(lsCompany);</span>
+<span class="nc" id="L129">        loController.setCategoryID(lsCategory);</span>
+
+<span class="nc" id="L131">        FXMLLoader loLoader = new FXMLLoader(getClass().getResource(VIEWS + lsFxml));</span>
+<span class="nc" id="L132">        loLoader.setController(loController);</span>
+<span class="nc" id="L133">        Parent loRoot = loLoader.load();</span>
+
+<span class="nc" id="L135">        Rectangle2D loBounds = Screen.getPrimary().getVisualBounds();</span>
+<span class="nc" id="L136">        foStage.setScene(new Scene(loRoot));</span>
+<span class="nc" id="L137">        foStage.setTitle(lsTitle);</span>
+<span class="nc" id="L138">        foStage.setX(loBounds.getMinX());</span>
+<span class="nc" id="L139">        foStage.setY(loBounds.getMinY());</span>
+<span class="nc" id="L140">        foStage.setWidth(loBounds.getWidth());</span>
+<span class="nc" id="L141">        foStage.setHeight(loBounds.getHeight());</span>
+<span class="nc" id="L142">        foStage.show();</span>
+<span class="nc" id="L143">    }</span>
+
+    /**
+     * Industry and category of the integsys menu item that opens the same
+     * Purchase Order screen (what its dashboard passes); cas.properties values
+     * when the menu has no such item.
+     */
+    private static String[] menuIndustryAndCategory(String fsMenuController) {
+<span class="nc" id="L151">        String[] laResult = {</span>
+<span class="nc" id="L152">            System.getProperty(&quot;user.selected.industry&quot;, &quot;&quot;),</span>
+<span class="nc" id="L153">            System.getProperty(&quot;user.selected.category&quot;, &quot;&quot;)};</span>
+<span class="nc" id="L154">        String lsSQL = &quot;SELECT b.sIndstCdx, b.sCategrCd, a.sMenuDesc&quot;</span>
+                + &quot; FROM xxxSysMenu a&quot;
+                + &quot; JOIN xxxSysMenuOthers b ON b.sMenuCDxx = a.sMenuCDxx&quot;
+<span class="nc" id="L157">                + &quot; WHERE b.sObjectNm LIKE &quot; + SQLUtil.toSQL(&quot;%.&quot; + fsMenuController)</span>
+<span class="nc" id="L158">                + &quot; AND a.cRecdStat = &quot; + SQLUtil.toSQL(RecordStatus.ACTIVE)</span>
+<span class="nc" id="L159">                + &quot; AND b.cRecdStat = &quot; + SQLUtil.toSQL(RecordStatus.ACTIVE)</span>
+                + &quot; ORDER BY a.sMenuCDxx&quot;;
+        try {
+<span class="nc" id="L162">            ResultSet loRS = poApp.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            if (loRS == null) {</span>
+<span class="nc" id="L164">                return laResult;</span>
+            }
+            try {
+<span class="nc" id="L167">                boolean lbFirst = true;</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">                while (loRS.next()) {</span>
+<span class="nc" id="L169">                    System.out.println(&quot;Menu item \&quot;&quot; + loRS.getString(&quot;sMenuDesc&quot;) + &quot;\&quot;: industry=&quot;</span>
+<span class="nc" id="L170">                            + loRS.getString(&quot;sIndstCdx&quot;) + &quot;, category=&quot; + loRS.getString(&quot;sCategrCd&quot;));</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">                    if (lbFirst) {</span>
+<span class="nc" id="L172">                        laResult[0] = nvl(loRS.getString(&quot;sIndstCdx&quot;));</span>
+<span class="nc" id="L173">                        laResult[1] = nvl(loRS.getString(&quot;sCategrCd&quot;));</span>
+<span class="nc" id="L174">                        lbFirst = false;</span>
+                    }
+                }
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (lbFirst) {</span>
+<span class="nc" id="L178">                    System.out.println(&quot;No menu item for &quot; + fsMenuController + &quot;; using cas.properties.&quot;);</span>
+                }
+            } finally {
+<span class="nc" id="L181">                MiscUtil.close(loRS);</span>
+            }
+<span class="nc" id="L183">        } catch (SQLException ex) {</span>
+<span class="nc" id="L184">            Logger.getLogger(PurchaseOrderGeneralApp.class.getName()).log(Level.WARNING,</span>
+                    &quot;Unable to read the menu; using cas.properties.&quot;, ex);
+<span class="nc" id="L186">        }</span>
+<span class="nc" id="L187">        return laResult;</span>
+    }
+
+    private static String nvl(String fsValue) {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        return fsValue == null ? &quot;&quot; : fsValue;</span>
+    }
+
+    /** Same settings integsys' Login reads from cas.properties. */
+    private static boolean loadProperties(String fsConfig) {
+<span class="nc" id="L196">        Properties loProps = new Properties();</span>
+<span class="nc" id="L197">        try (InputStream loFile = new FileInputStream(fsConfig + &quot;/config/cas.properties&quot;)) {</span>
+<span class="nc" id="L198">            loProps.load(loFile);</span>
+<span class="nc" id="L199">        } catch (IOException ex) {</span>
+<span class="nc" id="L200">            Logger.getLogger(PurchaseOrderGeneralApp.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L201">            return false;</span>
+<span class="nc" id="L202">        }</span>
+
+<span class="nc" id="L204">        String[] laKeys = {</span>
+            &quot;sys.main.industry&quot;, &quot;sys.general.industry&quot;,
+            &quot;sys.dept.finance&quot;, &quot;sys.dept.procurement&quot;,
+            &quot;user.selected.industry&quot;, &quot;user.selected.category&quot;, &quot;user.selected.company&quot;,
+            &quot;sys.default.path.temp.attachments&quot;,
+            &quot;allowed.department&quot;};
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        for (String lsKey : laKeys) {</span>
+<span class="nc" id="L211">            String lsValue = loProps.getProperty(lsKey);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (lsValue != null) {</span>
+<span class="nc" id="L213">                System.setProperty(lsKey, lsValue);</span>
+            } else {
+<span class="nc" id="L215">                System.err.println(&quot;cas.properties has no &quot; + lsKey + &quot;.&quot;);</span>
+            }
+        }
+<span class="nc" id="L218">        System.setProperty(&quot;sys.default.client.token&quot;, fsConfig + &quot;/client.token&quot;);</span>
+<span class="nc" id="L219">        System.setProperty(&quot;sys.default.access.token&quot;, fsConfig + &quot;/access.token&quot;);</span>
+<span class="nc" id="L220">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

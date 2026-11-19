@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderAppliance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderAppliance.java</span></div><h1>PurchaseOrderAppliance.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import java.sql.SQLException;
+import org.guanzon.appdriver.base.GuanzonException;
+import ph.com.guanzongroup.cas.po.validator.PurchaseOrderValidator;
+import ph.com.guanzongroup.cas.po.validator.PurchaseOrder_Appliance;
+import org.json.simple.JSONObject;
+
+/**
+ * Purchase Order controller for the Appliance industry.
+ *
+ * &lt;p&gt;
+ * Extends {@link PurchaseOrder}, which already runs InitTransaction,
+ * NewTransaction, OpenTransaction, UpdateTransaction, SaveTransaction,
+ * ConfirmTransaction, ApproveTransaction and CancelTransaction (including the
+ * authorization matrix and the inventory ledger). Fill in the TODOs with the
+ * Appliance-specific steps, or override a whole procedure when Appliance works
+ * differently. Rules belong in {@link PurchaseOrder_Appliance}.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Reusable helpers (see PurchaseOrderGeneral.create... for how to build them):
+ * PurchaseOrderSearch, PurchaseOrderSourceDocuments,
+ * PurchaseOrderAttachments, PurchaseOrderAudit, PurchaseOrderPrinter.&lt;/p&gt;
+ */
+<span class="nc" id="L25">public class PurchaseOrderAppliance extends PurchaseOrder {</span>
+
+    // =====================================================================
+    // Required
+    // =====================================================================
+    @Override
+    protected PurchaseOrderValidator createValidator() {
+<span class="nc" id="L32">        return new PurchaseOrder_Appliance();</span>
+    }
+
+    @Override
+    public void initSQL() {
+        //TODO Appliance browse SQL
+<span class="nc" id="L38">        SQL_BROWSE = &quot;SELECT&quot;</span>
+                + &quot;  a.sTransNox&quot;
+                + &quot;, a.dTransact&quot;
+                + &quot;, a.sReferNox&quot;
+                + &quot; FROM PO_Master a&quot;;
+<span class="nc" id="L43">    }</span>
+
+    // Saving: PurchaseOrder.willSave / saveOthers already prepare the rows,
+    // run the shared save rules and save the attachments.
+    @Override
+    protected JSONObject prepareIndustrySave() throws SQLException, CloneNotSupportedException, GuanzonException {
+        //TODO Appliance-specific preparation before saving
+<span class="nc" id="L50">        return successJSON();</span>
+    }
+
+    @Override
+    protected JSONObject saveIndustryRecords() throws SQLException, CloneNotSupportedException, GuanzonException {
+        //TODO Appliance records saved together with the PO; a non-success result rolls back
+<span class="nc" id="L56">        return successJSON();</span>
+    }
+
+    // =====================================================================
+    // Optional hooks (delete the ones you don't need)
+    // =====================================================================
+    @Override
+    protected void resetOthers() {
+        //TODO clear Appliance objects of the previous PO (called by New / Open)
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    protected void initOthers() {
+        //TODO Appliance objects created by InitTransaction
+<span class="nc" id="L70">    }</span>
+
+    @Override
+    protected JSONObject prepareStatusChange(String fsStatus)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        //TODO Appliance work before the status-change transaction (CONFIRMED, APPROVED, CANCELLED)
+<span class="nc" id="L76">        return successJSON();</span>
+    }
+
+    @Override
+    protected JSONObject processStatusChange(String fsStatus, String fsRemarks) throws Exception {
+        //TODO Appliance work inside the status-change transaction; a non-success result rolls back
+<span class="nc" id="L82">        return successJSON();</span>
+    }
+
+    // Override a whole procedure when Appliance differs, e.g.:
+    // @Override
+    // public JSONObject ConfirmTransaction(String remarks) throws ParseException, SQLException, CloneNotSupportedException, GuanzonException {
+    //     JSONObject loJSON = super.ConfirmTransaction(remarks);
+    //     ...
+    //     return loJSON;
+    // }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
