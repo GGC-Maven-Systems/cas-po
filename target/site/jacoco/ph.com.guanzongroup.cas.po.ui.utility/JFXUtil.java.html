@@ -1,0 +1,539 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JFXUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui.utility</a> &gt; <span class="el_source">JFXUtil.java</span></div><h1>JFXUtil.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.ui.utility;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.UnaryOperator;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javafx.animation.PauseTransition;
+import javafx.application.Platform;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
+import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
+import javafx.geometry.Pos;
+import javafx.scene.Cursor;
+import javafx.scene.Group;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.DatePicker;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.OverrunStyle;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
+import javafx.scene.control.TextInputControl;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
+import javafx.scene.input.ScrollEvent;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.util.Duration;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
+
+/**
+ * JavaFX helpers used by the Purchase Order screens.
+ *
+ * &lt;p&gt;
+ * Copied (only the methods the screens use) from
+ * ph.com.guanzongroup.integsys.utility.JFXUtil, with two changes so it works on
+ * any Java/JavaFX version (no com.sun.javafx internals, no javafx-swing):&lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;column reordering is undone through the columns list instead of the
+ * internal TableHeaderRow;&lt;/li&gt;
+ * &lt;li&gt;PDF pages are converted to JavaFX images without SwingFXUtils.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+public final class JFXUtil {
+
+    private JFXUtil() {
+    }
+
+    // =====================================================================
+    // Values
+    // =====================================================================
+    /** Whether source equals any of others (null matches null). */
+    public static boolean isObjectEqualTo(Object source, Object... others) {
+<span class="nc bnc" id="L82" title="All 4 branches missed.">        if (source == null &amp;&amp; others != null) {</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">            for (Object other : others) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">                if (other == null) {</span>
+<span class="nc" id="L85">                    return true;</span>
+                }
+            }
+<span class="nc" id="L88">            return false;</span>
+        }
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        for (Object other : others) {</span>
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            if (source != null &amp;&amp; source.equals(other)) {</span>
+<span class="nc" id="L92">                return true;</span>
+            }
+        }
+<span class="nc" id="L95">        return false;</span>
+    }
+
+    /** Text without commas; &quot;0&quot; when empty or negative zero. */
+    public static String removeComma(String numberStr) {
+<span class="nc bnc" id="L100" title="All 4 branches missed.">        if (numberStr == null || numberStr.isEmpty()) {</span>
+<span class="nc" id="L101">            return &quot;0&quot;;</span>
+        }
+<span class="nc" id="L103">        String clean = numberStr.replace(&quot;,&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (clean.matches(&quot;-0+(\\.0+)?&quot;)) {</span>
+<span class="nc" id="L105">            return &quot;0&quot;;</span>
+        }
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        return clean.isEmpty() ? &quot;0&quot; : clean;</span>
+    }
+
+    // =====================================================================
+    // Fields
+    // =====================================================================
+    public static void setDisabled(boolean disable, Object... elements) {
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        for (Object obj : elements) {</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            if (obj instanceof DatePicker) {</span>
+<span class="nc" id="L116">                DatePicker dp = (DatePicker) obj;</span>
+<span class="nc" id="L117">                dp.setDisable(disable);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">                dp.getEditor().setEditable(!disable);</span>
+<span class="nc" id="L119">                dp.getEditor().setDisable(false);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            } else if (obj instanceof TextArea) {</span>
+<span class="nc" id="L121">                TextArea ta = (TextArea) obj;</span>
+<span class="nc" id="L122">                ta.setDisable(disable);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">                ta.setEditable(!disable);</span>
+<span class="nc" id="L124">                ta.setMouseTransparent(false);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                ta.setCursor(!disable ? Cursor.TEXT : Cursor.DEFAULT);</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            } else if (obj instanceof TextField) {</span>
+<span class="nc" id="L127">                TextField tf = (TextField) obj;</span>
+<span class="nc" id="L128">                tf.setDisable(disable);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                tf.setEditable(!disable);</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                if (disable) {</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                    if (!tf.getStyleClass().contains(&quot;DisabledTextField&quot;)) {</span>
+<span class="nc" id="L132">                        tf.getStyleClass().add(&quot;DisabledTextField&quot;);</span>
+                    }
+                } else {
+<span class="nc" id="L135">                    tf.getStyleClass().remove(&quot;DisabledTextField&quot;);</span>
+                }
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            } else if (obj instanceof Node) {</span>
+<span class="nc" id="L138">                ((Node) obj).setDisable(disable);</span>
+            }
+        }
+<span class="nc" id="L141">    }</span>
+
+    /** Clears every text input, date, check box and combo box inside the panes. */
+    public static void clearTextFields(AnchorPane... anchorPanes) {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        for (AnchorPane pane : anchorPanes) {</span>
+<span class="nc" id="L146">            clearTextInputsRecursive(pane);</span>
+        }
+<span class="nc" id="L148">    }</span>
+
+    private static void clearTextInputsRecursive(Parent parent) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        for (Node node : parent.getChildrenUnmodifiable()) {</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (node instanceof TextInputControl) {</span>
+<span class="nc" id="L153">                ((TextInputControl) node).clear();</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            } else if (node instanceof DatePicker) {</span>
+<span class="nc" id="L155">                DatePicker dp = (DatePicker) node;</span>
+<span class="nc" id="L156">                dp.setValue(null);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                if (dp.getEditor() != null) {</span>
+<span class="nc" id="L158">                    dp.getEditor().clear();</span>
+                }
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            } else if (node instanceof CheckBox) {</span>
+<span class="nc" id="L161">                ((CheckBox) node).setSelected(false);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            } else if (node instanceof ComboBox) {</span>
+<span class="nc" id="L163">                ComboBox&lt;?&gt; combo = (ComboBox&lt;?&gt;) node;</span>
+<span class="nc" id="L164">                EventHandler&lt;ActionEvent&gt; savedHandler = combo.getOnAction();</span>
+<span class="nc" id="L165">                combo.setOnAction(null);</span>
+<span class="nc" id="L166">                combo.getSelectionModel().select(null);</span>
+<span class="nc" id="L167">                combo.setOnAction(savedHandler);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            } else if (node instanceof Parent) {</span>
+<span class="nc" id="L169">                clearTextInputsRecursive((Parent) node);</span>
+            }
+<span class="nc" id="L171">        }</span>
+<span class="nc" id="L172">    }</span>
+
+    /** Digits, commas and at most one dot. */
+    public static void inputDecimalOnly(TextField... foTxtFields) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        for (TextField txtField : foTxtFields) {</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">            if (txtField != null) {</span>
+<span class="nc" id="L178">                UnaryOperator&lt;TextFormatter.Change&gt; filter = change -&gt; {</span>
+<span class="nc" id="L179">                    String newText = change.getControlNewText();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                    if (!newText.matches(&quot;[0-9,]*\\.?[0-9]*&quot;)) {</span>
+<span class="nc" id="L181">                        return null;</span>
+                    }
+<span class="nc" id="L183">                    return change;</span>
+                };
+<span class="nc" id="L185">                txtField.setTextFormatter(new TextFormatter&lt;&gt;(filter));</span>
+            }
+        }
+<span class="nc" id="L188">    }</span>
+
+    /** Numbers with thousands separators while typing. */
+    public static void setCommaFormatter(TextField... textFields) {
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        for (TextField textField : textFields) {</span>
+<span class="nc" id="L193">            final AtomicBoolean isAdjusting = new AtomicBoolean(false);</span>
+<span class="nc" id="L194">            final boolean[] isUpdating = {false};</span>
+<span class="nc" id="L195">            final int[] newCaretPos = {0};</span>
+
+<span class="nc" id="L197">            UnaryOperator&lt;TextFormatter.Change&gt; filter = change -&gt; {</span>
+<span class="nc" id="L198">                String newText = change.getControlNewText();</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">                if (!newText.matches(&quot;[\\d,\\.]*&quot;)) {</span>
+<span class="nc" id="L200">                    return null;</span>
+                }
+<span class="nc bnc" id="L202" title="All 4 branches missed.">                if (newText.chars().filter(c -&gt; c == '.').count() &gt; 1) {</span>
+<span class="nc" id="L203">                    return null;</span>
+                }
+<span class="nc" id="L205">                return change;</span>
+            };
+<span class="nc" id="L207">            textField.setTextFormatter(new TextFormatter&lt;&gt;(filter));</span>
+
+<span class="nc" id="L209">            textField.textProperty().addListener((obs, oldValue, newValue) -&gt; {</span>
+<span class="nc bnc" id="L210" title="All 6 branches missed.">                if (isAdjusting.get() || isUpdating[0] || newValue == null) {</span>
+<span class="nc" id="L211">                    return;</span>
+                }
+<span class="nc" id="L213">                isUpdating[0] = true;</span>
+                try {
+<span class="nc" id="L215">                    String clean = newValue.replaceAll(&quot;,&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L216" title="All 6 branches missed.">                    if (clean.isEmpty() || clean.equals(&quot;.&quot;) || clean.matches(&quot;0*\\.0*&quot;)) {</span>
+<span class="nc" id="L217">                        return;</span>
+                    }
+<span class="nc" id="L219">                    String integerPart = clean;</span>
+<span class="nc" id="L220">                    String decimalPart = &quot;&quot;;</span>
+<span class="nc" id="L221">                    int dotIndex = clean.indexOf('.');</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                    if (dotIndex &gt;= 0) {</span>
+<span class="nc" id="L223">                        integerPart = clean.substring(0, dotIndex);</span>
+<span class="nc" id="L224">                        decimalPart = clean.substring(dotIndex);</span>
+                    }
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                    long integerVal = integerPart.isEmpty() ? 0 : Long.parseLong(integerPart);</span>
+<span class="nc" id="L227">                    String formatted = NumberFormat.getIntegerInstance(Locale.US).format(integerVal) + decimalPart;</span>
+<span class="nc" id="L228">                    Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L229">                        isAdjusting.set(true);</span>
+<span class="nc" id="L230">                        int originalCaretPos = textField.getCaretPosition();</span>
+<span class="nc" id="L231">                        textField.setText(formatted);</span>
+<span class="nc" id="L232">                        newCaretPos[0] = Math.max(0, Math.min(formatted.length(),</span>
+<span class="nc" id="L233">                                originalCaretPos + formatted.length() - newValue.length()));</span>
+<span class="nc" id="L234">                        isAdjusting.set(false);</span>
+<span class="nc" id="L235">                    });</span>
+<span class="nc" id="L236">                    Platform.runLater(() -&gt; textField.positionCaret(newCaretPos[0]));</span>
+<span class="nc" id="L237">                } catch (NumberFormatException e) {</span>
+                    //leave the text as typed
+                } finally {
+<span class="nc" id="L240">                    isUpdating[0] = false;</span>
+                }
+<span class="nc" id="L242">            });</span>
+        }
+<span class="nc" id="L244">    }</span>
+
+    /** Combo box list cells highlighted with hexColor. */
+    public static void initComboBoxCellDesignColor(String hexColor, ComboBox&lt;?&gt;... comboBoxes) {
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        for (ComboBox&lt;?&gt; comboBox : comboBoxes) {</span>
+<span class="nc" id="L249">            initComboBoxCellDesignColor(comboBox, hexColor);</span>
+        }
+<span class="nc" id="L251">    }</span>
+
+    public static &lt;T&gt; void initComboBoxCellDesignColor(ComboBox&lt;T&gt; comboBox, String hexcolor) {
+<span class="nc" id="L254">        comboBox.setCellFactory(param -&gt; new ListCell&lt;T&gt;() {</span>
+            {
+<span class="nc" id="L256">                hoverProperty().addListener((obs, wasHovered, isNowHovered) -&gt; {</span>
+<span class="nc bnc" id="L257" title="All 4 branches missed.">                    if (!isEmpty() &amp;&amp; getItem() != null) {</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">                        if (isNowHovered) {</span>
+<span class="nc" id="L259">                            setStyle(&quot;-fx-background-color: &quot; + hexcolor + &quot;; -fx-text-fill: &quot;</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                                    + (isSelected() ? &quot;black&quot; : &quot;white&quot;) + &quot;;&quot;);</span>
+                        } else {
+<span class="nc" id="L262">                            updateColor();</span>
+                        }
+                    }
+<span class="nc" id="L265">                });</span>
+<span class="nc" id="L266">            }</span>
+
+            @Override
+            protected void updateItem(T item, boolean empty) {
+<span class="nc" id="L270">                super.updateItem(item, empty);</span>
+<span class="nc bnc" id="L271" title="All 4 branches missed.">                if (empty || item == null) {</span>
+<span class="nc" id="L272">                    setText(null);</span>
+<span class="nc" id="L273">                    setStyle(&quot;&quot;);</span>
+<span class="nc" id="L274">                    return;</span>
+                }
+<span class="nc" id="L276">                setText(item.toString());</span>
+<span class="nc" id="L277">                updateColor();</span>
+<span class="nc" id="L278">                selectedProperty().addListener((obs, oldSel, newSel) -&gt; updateColor());</span>
+<span class="nc" id="L279">                focusedProperty().addListener((obs, oldFoc, newFoc) -&gt; updateColor());</span>
+<span class="nc" id="L280">            }</span>
+
+            private void updateColor() {
+<span class="nc bnc" id="L283" title="All 4 branches missed.">                if (isSelected() || isFocused()) {</span>
+<span class="nc" id="L284">                    setStyle(&quot;-fx-background-color: &quot; + hexcolor + &quot;; -fx-text-fill: black;&quot;);</span>
+                } else {
+<span class="nc" id="L286">                    setStyle(&quot;-fx-background-color: transparent; -fx-text-fill: black;&quot;);</span>
+                }
+<span class="nc" id="L288">            }</span>
+        });
+<span class="nc" id="L290">        comboBox.setButtonCell(new ListCell&lt;T&gt;() {</span>
+            @Override
+            protected void updateItem(T item, boolean empty) {
+<span class="nc" id="L293">                super.updateItem(item, empty);</span>
+<span class="nc bnc" id="L294" title="All 4 branches missed.">                if (empty || item == null) {</span>
+<span class="nc" id="L295">                    setText(null);</span>
+<span class="nc" id="L296">                    setStyle(&quot;&quot;);</span>
+                } else {
+<span class="nc" id="L298">                    setText(item.toString());</span>
+<span class="nc" id="L299">                    setStyle(&quot;-fx-background-color: transparent; -fx-text-fill: black;&quot;);</span>
+                }
+<span class="nc" id="L301">            }</span>
+        });
+<span class="nc" id="L303">    }</span>
+
+    // =====================================================================
+    // Tables
+    // =====================================================================
+    public static void setColumnCenter(TableColumn&lt;?, ?&gt;... columns) {
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        for (TableColumn&lt;?, ?&gt; column : columns) {</span>
+<span class="nc" id="L310">            column.setStyle(&quot;-fx-alignment: CENTER;&quot;);</span>
+        }
+<span class="nc" id="L312">    }</span>
+
+    public static void setColumnLeft(TableColumn&lt;?, ?&gt;... columns) {
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        for (TableColumn&lt;?, ?&gt; column : columns) {</span>
+<span class="nc" id="L316">            column.setStyle(&quot;-fx-alignment: CENTER-LEFT;-fx-padding: 0 5 0 5;&quot;);</span>
+        }
+<span class="nc" id="L318">    }</span>
+
+    public static void setColumnRight(TableColumn&lt;?, ?&gt;... columns) {
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        for (TableColumn&lt;?, ?&gt; column : columns) {</span>
+<span class="nc" id="L322">            column.setStyle(&quot;-fx-alignment: CENTER-RIGHT;-fx-padding: 0 5 0 5;&quot;);</span>
+        }
+<span class="nc" id="L324">    }</span>
+
+    /**
+     * Binds column N to property indexNN of the row model, turns off sorting
+     * and editing, and keeps the columns in their FXML order.
+     */
+    public static void setColumnsIndexAndDisableReordering(final TableView&lt;?&gt; tableView) {
+<span class="nc" id="L331">        int counter = 1;</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        for (Object obj : tableView.getColumns()) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L334">            final TableColumn&lt;Object, Object&gt; column = (TableColumn&lt;Object, Object&gt;) obj;</span>
+<span class="nc" id="L335">            column.setCellValueFactory(new PropertyValueFactory&lt;&gt;(String.format(&quot;index%02d&quot;, counter++)));</span>
+<span class="nc" id="L336">            column.setSortable(false);</span>
+<span class="nc" id="L337">            column.setEditable(false);</span>
+<span class="nc" id="L338">            column.setCellFactory(col -&gt; {</span>
+<span class="nc" id="L339">                TableCell&lt;Object, Object&gt; cell = new TableCell&lt;Object, Object&gt;() {</span>
+                    @Override
+                    protected void updateItem(Object item, boolean empty) {
+<span class="nc" id="L342">                        super.updateItem(item, empty);</span>
+<span class="nc bnc" id="L343" title="All 4 branches missed.">                        setText(empty || item == null ? null : item.toString().replaceAll(&quot;\\r?\\n&quot;, &quot;&quot;));</span>
+<span class="nc" id="L344">                    }</span>
+                };
+<span class="nc" id="L346">                cell.setWrapText(false);</span>
+<span class="nc" id="L347">                cell.setTextOverrun(OverrunStyle.ELLIPSIS);</span>
+<span class="nc" id="L348">                return cell;</span>
+            });
+<span class="nc" id="L350">        }</span>
+<span class="nc" id="L351">        keepColumnOrder(tableView);</span>
+<span class="nc" id="L352">    }</span>
+
+    /** Puts the columns back in their original order when the user drags one. */
+    private static &lt;S&gt; void keepColumnOrder(TableView&lt;S&gt; tableView) {
+<span class="nc bnc" id="L356" title="All 2 branches missed.">        if (tableView.getProperties().containsKey(&quot;keepColumnOrder&quot;)) {</span>
+<span class="nc" id="L357">            return;</span>
+        }
+<span class="nc" id="L359">        tableView.getProperties().put(&quot;keepColumnOrder&quot;, Boolean.TRUE);</span>
+<span class="nc" id="L360">        final List&lt;TableColumn&lt;S, ?&gt;&gt; laOrder = new ArrayList&lt;&gt;(tableView.getColumns());</span>
+<span class="nc" id="L361">        final boolean[] lbRestoring = {false};</span>
+<span class="nc" id="L362">        tableView.getColumns().addListener((ListChangeListener&lt;TableColumn&lt;S, ?&gt;&gt;) change -&gt; {</span>
+<span class="nc bnc" id="L363" title="All 4 branches missed.">            if (lbRestoring[0] || tableView.getColumns().equals(laOrder)) {</span>
+<span class="nc" id="L364">                return;</span>
+            }
+<span class="nc" id="L366">            lbRestoring[0] = true;</span>
+<span class="nc" id="L367">            Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L368">                tableView.getColumns().setAll(laOrder);</span>
+<span class="nc" id="L369">                lbRestoring[0] = false;</span>
+<span class="nc" id="L370">            });</span>
+<span class="nc" id="L371">        });</span>
+<span class="nc" id="L372">    }</span>
+
+    public static &lt;T&gt; void selectAndFocusRow(TableView&lt;T&gt; tableView, int index) {
+<span class="nc" id="L375">        tableView.getSelectionModel().select(index);</span>
+<span class="nc" id="L376">        tableView.getFocusModel().focus(index);</span>
+<span class="nc" id="L377">    }</span>
+
+    /** Index01-based row of the item whose indexNN (columnIndex) equals lnpn. */
+    public static int getDetailRow(ObservableList&lt;?&gt; dataList, int lnpn, int columnIndex) {
+<span class="nc" id="L381">        int result = lnpn - 1;</span>
+        try {
+<span class="nc bnc" id="L383" title="All 2 branches missed.">            for (Object item : dataList) {</span>
+<span class="nc" id="L384">                String value = (String) item.getClass().getMethod(String.format(&quot;getIndex%02d&quot;, columnIndex)).invoke(item);</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">                if (String.valueOf(lnpn).equals(value)) {</span>
+<span class="nc" id="L386">                    String index01 = (String) item.getClass().getMethod(&quot;getIndex01&quot;).invoke(item);</span>
+<span class="nc" id="L387">                    result = Integer.parseInt(index01) - 1;</span>
+<span class="nc" id="L388">                    break;</span>
+                }
+<span class="nc" id="L390">            }</span>
+<span class="nc" id="L391">        } catch (ReflectiveOperationException | NumberFormatException e) {</span>
+<span class="nc" id="L392">            Logger.getLogger(JFXUtil.class.getName()).log(Level.WARNING, null, e);</span>
+<span class="nc" id="L393">        }</span>
+<span class="nc" id="L394">        return result;</span>
+    }
+
+    /** indexNN (columnIndex) of the item whose index01 equals lnpn; 0 when not found. */
+    public static int getDetailTempRow(ObservableList&lt;?&gt; dataList, int lnpn, int columnIndex) {
+<span class="nc" id="L399">        int result = 0;</span>
+        try {
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            for (Object item : dataList) {</span>
+<span class="nc" id="L402">                String index01 = (String) item.getClass().getMethod(&quot;getIndex01&quot;).invoke(item);</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">                if (String.valueOf(lnpn).equals(index01)) {</span>
+<span class="nc" id="L404">                    String value = (String) item.getClass().getMethod(String.format(&quot;getIndex%02d&quot;, columnIndex)).invoke(item);</span>
+<span class="nc" id="L405">                    result = Integer.parseInt(value);</span>
+<span class="nc" id="L406">                    break;</span>
+                }
+<span class="nc" id="L408">            }</span>
+<span class="nc" id="L409">        } catch (ReflectiveOperationException | NumberFormatException e) {</span>
+<span class="nc" id="L410">            Logger.getLogger(JFXUtil.class.getName()).log(Level.WARNING, null, e);</span>
+<span class="nc" id="L411">        }</span>
+<span class="nc" id="L412">        return result;</span>
+    }
+
+    // =====================================================================
+    // Attachment preview
+    // =====================================================================
+    public static void adjustImageSize(Image image, ImageView imageView, double ldstackPaneWidth, double ldstackPaneHeight) {
+<span class="nc" id="L419">        double imageRatio = image.getWidth() / image.getHeight();</span>
+<span class="nc" id="L420">        double containerRatio = ldstackPaneWidth / ldstackPaneHeight;</span>
+<span class="nc" id="L421">        imageView.fitWidthProperty().unbind();</span>
+<span class="nc" id="L422">        imageView.fitHeightProperty().unbind();</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        if (imageRatio &gt; containerRatio) {</span>
+<span class="nc" id="L424">            imageView.setFitWidth(ldstackPaneWidth);</span>
+<span class="nc" id="L425">            imageView.setFitHeight(ldstackPaneWidth / imageRatio);</span>
+        } else {
+<span class="nc" id="L427">            imageView.setFitHeight(ldstackPaneHeight);</span>
+<span class="nc" id="L428">            imageView.setFitWidth(ldstackPaneHeight * imageRatio);</span>
+        }
+<span class="nc" id="L430">        imageView.setPreserveRatio(true);</span>
+<span class="nc" id="L431">        imageView.setSmooth(true);</span>
+<span class="nc" id="L432">    }</span>
+
+    public static void resetImageBounds(ImageView imageView, StackPane stackPane1) {
+<span class="nc" id="L435">        imageView.setScaleX(1.0);</span>
+<span class="nc" id="L436">        imageView.setScaleY(1.0);</span>
+<span class="nc" id="L437">        imageView.setTranslateX(0);</span>
+<span class="nc" id="L438">        imageView.setTranslateY(0);</span>
+<span class="nc" id="L439">        StackPane.setAlignment(imageView, Pos.CENTER);</span>
+<span class="nc" id="L440">    }</span>
+
+    public static void stackPaneClip(StackPane stackPane1) {
+<span class="nc" id="L443">        javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle(</span>
+<span class="nc" id="L444">                stackPane1.getWidth() - 8, stackPane1.getHeight() - 8);</span>
+<span class="nc" id="L445">        clip.setArcWidth(8);</span>
+<span class="nc" id="L446">        clip.setArcHeight(8);</span>
+<span class="nc" id="L447">        clip.setLayoutX(4);</span>
+<span class="nc" id="L448">        clip.setLayoutY(4);</span>
+<span class="nc" id="L449">        stackPane1.setClip(clip);</span>
+<span class="nc" id="L450">    }</span>
+
+    /** Shows the pages of a PDF in the preview pane (Ctrl+wheel zooms, drag pans). */
+    public static void PDFViewConfig(String filePath2, StackPane stackPane1, Button btnArrowLeft, Button btnArrowRight,
+            Double ldstackPaneWidth, Double ldstackPaneHeight) {
+<span class="nc" id="L455">        try (PDDocument document = PDDocument.load(new File(filePath2))) {</span>
+<span class="nc" id="L456">            PDFRenderer renderer = new PDFRenderer(document);</span>
+<span class="nc" id="L457">            VBox pdfContainer = new VBox(10);</span>
+<span class="nc" id="L458">            pdfContainer.setAlignment(Pos.CENTER);</span>
+<span class="nc" id="L459">            pdfContainer.setPrefWidth(ldstackPaneWidth);</span>
+
+<span class="nc bnc" id="L461" title="All 2 branches missed.">            for (int i = 0; i &lt; document.getNumberOfPages(); i++) {</span>
+<span class="nc" id="L462">                Image fxImage = toFXImage(renderer.renderImageWithDPI(i, 150));</span>
+<span class="nc" id="L463">                ImageView pageView = new ImageView(fxImage);</span>
+<span class="nc" id="L464">                pageView.setPreserveRatio(true);</span>
+<span class="nc" id="L465">                pageView.setFitWidth(ldstackPaneWidth);</span>
+<span class="nc" id="L466">                adjustImageSize(fxImage, pageView, ldstackPaneWidth, ldstackPaneHeight);</span>
+<span class="nc" id="L467">                pdfContainer.getChildren().add(pageView);</span>
+            }
+
+<span class="nc" id="L470">            Group pdfGroup = new Group(pdfContainer);</span>
+<span class="nc" id="L471">            StackPane centerPane = new StackPane(pdfGroup);</span>
+<span class="nc" id="L472">            centerPane.setAlignment(Pos.CENTER);</span>
+<span class="nc" id="L473">            ScrollPane scrollPane = new ScrollPane(centerPane);</span>
+<span class="nc" id="L474">            scrollPane.setPannable(true);</span>
+<span class="nc" id="L475">            scrollPane.setFitToWidth(true);</span>
+<span class="nc" id="L476">            scrollPane.setFitToHeight(true);</span>
+
+<span class="nc" id="L478">            stackPane1.getChildren().setAll(scrollPane, btnArrowLeft, btnArrowRight);</span>
+<span class="nc" id="L479">            StackPane.setAlignment(btnArrowLeft, Pos.CENTER_LEFT);</span>
+<span class="nc" id="L480">            StackPane.setAlignment(btnArrowRight, Pos.CENTER_RIGHT);</span>
+<span class="nc" id="L481">            StackPane.setMargin(btnArrowLeft, new Insets(0, 0, 0, 10));</span>
+<span class="nc" id="L482">            StackPane.setMargin(btnArrowRight, new Insets(0, 10, 0, 0));</span>
+
+<span class="nc" id="L484">            PauseTransition delay = new PauseTransition(Duration.seconds(2));</span>
+<span class="nc" id="L485">            delay.setOnFinished(event -&gt; Platform.runLater(() -&gt; stackPaneClip(stackPane1)));</span>
+<span class="nc" id="L486">            delay.play();</span>
+
+<span class="nc" id="L488">            final DoubleProperty zoomFactor = new SimpleDoubleProperty(1.0);</span>
+<span class="nc" id="L489">            scrollPane.addEventFilter(ScrollEvent.SCROLL, event -&gt; {</span>
+<span class="nc bnc" id="L490" title="All 2 branches missed.">                if (event.isControlDown()) {</span>
+<span class="nc" id="L491">                    event.consume();</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">                    zoomFactor.set(zoomFactor.get() * (event.getDeltaY() &gt; 0 ? 1.1 : 0.9));</span>
+<span class="nc" id="L493">                    pdfGroup.setScaleX(zoomFactor.get());</span>
+<span class="nc" id="L494">                    pdfGroup.setScaleY(zoomFactor.get());</span>
+
+<span class="nc" id="L496">                    Bounds viewportBounds = scrollPane.getViewportBounds();</span>
+<span class="nc" id="L497">                    Bounds contentBounds = pdfGroup.getBoundsInParent();</span>
+<span class="nc" id="L498">                    double mouseX = event.getX();</span>
+<span class="nc" id="L499">                    double mouseY = event.getY();</span>
+<span class="nc" id="L500">                    double hRatio = (scrollPane.getHvalue() * (contentBounds.getWidth() - viewportBounds.getWidth()) + mouseX) / contentBounds.getWidth();</span>
+<span class="nc" id="L501">                    double vRatio = (scrollPane.getVvalue() * (contentBounds.getHeight() - viewportBounds.getHeight()) + mouseY) / contentBounds.getHeight();</span>
+<span class="nc" id="L502">                    Platform.runLater(() -&gt; {</span>
+<span class="nc" id="L503">                        Bounds newBounds = pdfGroup.getBoundsInParent();</span>
+<span class="nc" id="L504">                        double newH = (hRatio * newBounds.getWidth() - mouseX) / (newBounds.getWidth() - viewportBounds.getWidth());</span>
+<span class="nc" id="L505">                        double newV = (vRatio * newBounds.getHeight() - mouseY) / (newBounds.getHeight() - viewportBounds.getHeight());</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">                        scrollPane.setHvalue(Double.isNaN(newH) ? 0.5 : Math.min(Math.max(0, newH), 1.0));</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">                        scrollPane.setVvalue(Double.isNaN(newV) ? 0.5 : Math.min(Math.max(0, newV), 1.0));</span>
+<span class="nc" id="L508">                    });</span>
+                }
+<span class="nc" id="L510">            });</span>
+
+<span class="nc" id="L512">            final ObjectProperty&lt;Point2D&gt; lastMouse = new SimpleObjectProperty&lt;&gt;();</span>
+<span class="nc" id="L513">            pdfGroup.setOnMousePressed(e -&gt; lastMouse.set(new Point2D(e.getSceneX(), e.getSceneY())));</span>
+<span class="nc" id="L514">            pdfGroup.setOnMouseDragged(e -&gt; {</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">                if (lastMouse.get() != null) {</span>
+<span class="nc" id="L516">                    pdfGroup.setTranslateX(pdfGroup.getTranslateX() + e.getSceneX() - lastMouse.get().getX());</span>
+<span class="nc" id="L517">                    pdfGroup.setTranslateY(pdfGroup.getTranslateY() + e.getSceneY() - lastMouse.get().getY());</span>
+<span class="nc" id="L518">                    lastMouse.set(new Point2D(e.getSceneX(), e.getSceneY()));</span>
+                }
+<span class="nc" id="L520">            });</span>
+<span class="nc" id="L521">            pdfGroup.setOnMouseReleased(e -&gt; lastMouse.set(null));</span>
+<span class="nc" id="L522">        } catch (IOException ex) {</span>
+<span class="nc" id="L523">            Logger.getLogger(JFXUtil.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L524">        }</span>
+<span class="nc" id="L525">    }</span>
+
+    /** BufferedImage to a JavaFX image (what SwingFXUtils.toFXImage does). */
+    private static Image toFXImage(BufferedImage foImage) {
+<span class="nc" id="L529">        WritableImage loImage = new WritableImage(foImage.getWidth(), foImage.getHeight());</span>
+<span class="nc" id="L530">        PixelWriter loWriter = loImage.getPixelWriter();</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">        for (int y = 0; y &lt; foImage.getHeight(); y++) {</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">            for (int x = 0; x &lt; foImage.getWidth(); x++) {</span>
+<span class="nc" id="L533">                loWriter.setArgb(x, y, foImage.getRGB(x, y));</span>
+            }
+        }
+<span class="nc" id="L536">        return loImage;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

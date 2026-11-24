@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Model_PO_Detail.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.model</a> &gt; <span class="el_source">Model_PO_Detail.java</span></div><h1>Model_PO_Detail.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.model;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Date;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.guanzon.appdriver.agent.services.Model;
+import org.guanzon.appdriver.agent.services.ReferenceCache;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.cas.inv.model.Model_Inv_Master;
+import org.guanzon.cas.inv.model.Model_Inventory;
+import org.guanzon.cas.inv.services.InvModels;
+import org.guanzon.cas.inv.warehouse.model.Model_Inv_Stock_Request_Detail;
+import org.guanzon.cas.inv.warehouse.model.Model_Inv_Stock_Request_Master;
+import org.guanzon.cas.inv.warehouse.services.InvWarehouseModels;
+import org.guanzon.cas.parameter.model.Model_Branch;
+import org.guanzon.cas.parameter.model.Model_Brand;
+import org.guanzon.cas.parameter.model.Model_Category;
+import org.guanzon.cas.parameter.model.Model_Color;
+import org.guanzon.cas.parameter.model.Model_Company;
+import org.guanzon.cas.parameter.model.Model_Industry;
+import org.guanzon.cas.parameter.model.Model_Inv_Type;
+import org.guanzon.cas.parameter.model.Model_Measure;
+import org.guanzon.cas.parameter.model.Model_Model;
+import org.guanzon.cas.parameter.model.Model_Term;
+import org.guanzon.cas.parameter.services.ParamModels;
+//Quotations belong to cas-poqt (see QUOTATION LINK below)
+import ph.com.guanzongroup.cas.poqt.model.Model_PO_Quotation_Detail;
+import ph.com.guanzongroup.cas.poqt.model.Model_PO_Quotation_Master;
+import ph.com.guanzongroup.cas.poqt.services.QuotationModels;
+import org.json.simple.JSONObject;
+
+/**
+ * PO_Detail record.
+ *
+ * &lt;p&gt;
+ * Copied from ph.com.guanzongroup.cas.po.model.Model_PO_Detail with the same
+ * columns, getters/setters and reference accessors. The reference accessors
+ * load lazily through {@link ModelReferences} (reference tables are cached,
+ * transaction records are not).&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * QUOTATION LINK: {@link #POQuotationMaster()} / {@link #POQuotationDetail()}
+ * return cas-poqt's quotation models; they are the only part of this
+ * class that uses cas-poqt.&lt;/p&gt;
+ */
+<span class="nc" id="L51">public class Model_PO_Detail extends Model {</span>
+
+    //reference records: built on first access, never in initialize()
+    private Model_Branch poBranch;
+    private Model_Industry poIndustry;
+    private Model_Company poCompany;
+    private Model_Term poTerm;
+    private Model_Brand poBrand;
+    private Model_Model poModel;
+    private Model_Color poColor;
+    private Model_Category poCategory;
+    private Model_Inv_Type poInv_Type;
+    private Model_Measure poMeasure;
+    private Model_Inv_Stock_Request_Master poInvStockMaster;
+    private Model_Inv_Stock_Request_Detail poInvStockDetail;
+    private Model_Inventory poInventory;
+    private Model_Inv_Master poInventoryMaster;
+    private Model_PO_Quotation_Master poPOQuotationMaster;
+    private Model_PO_Quotation_Detail poPOQuotationDetail;
+
+    /** Brand filter of the item search (not a column). */
+    private String lsBrand;
+
+    @Override
+    public void initialize() {
+        try {
+<span class="nc" id="L77">            poEntity = MiscUtil.xml2ResultSet(System.getProperty(&quot;sys.default.path.metadata&quot;) + XML, getTable());</span>
+
+<span class="nc" id="L79">            poEntity.last();</span>
+<span class="nc" id="L80">            poEntity.moveToInsertRow();</span>
+
+<span class="nc" id="L82">            MiscUtil.initRowSet(poEntity);</span>
+
+            //default values
+<span class="nc" id="L85">            poEntity.updateObject(&quot;nEntryNox&quot;, 0);</span>
+<span class="nc" id="L86">            poEntity.updateObject(&quot;nCancelld&quot;, 0.00);</span>
+<span class="nc" id="L87">            poEntity.updateObject(&quot;nUnitPrce&quot;, 0.0000);</span>
+<span class="nc" id="L88">            poEntity.updateObject(&quot;nOldPrice&quot;, 0.0000);</span>
+<span class="nc" id="L89">            poEntity.updateObject(&quot;nQtyOnHnd&quot;, 0.00);</span>
+<span class="nc" id="L90">            poEntity.updateObject(&quot;nRecOrder&quot;, 0.00);</span>
+<span class="nc" id="L91">            poEntity.updateObject(&quot;nQuantity&quot;, 0.00);</span>
+<span class="nc" id="L92">            poEntity.updateObject(&quot;nReceived&quot;, 0.00);</span>
+<span class="nc" id="L93">            poEntity.updateObject(&quot;dModified&quot;,</span>
+<span class="nc" id="L94">                    SQLUtil.toDate(ModelReferences.shortDate(poGRider.getServerDate()), SQLUtil.FORMAT_SHORT_DATE));</span>
+
+<span class="nc" id="L96">            poEntity.insertRow();</span>
+<span class="nc" id="L97">            poEntity.moveToCurrentRow();</span>
+<span class="nc" id="L98">            poEntity.absolute(1);</span>
+
+<span class="nc" id="L100">            ID = &quot;sTransNox&quot;;</span>
+<span class="nc" id="L101">            ID2 = &quot;nEntryNox&quot;;</span>
+<span class="nc" id="L102">            pnEditMode = EditMode.UNKNOWN;</span>
+<span class="nc" id="L103">        } catch (SQLException e) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (logwrapr != null) {</span>
+<span class="nc" id="L105">                logwrapr.severe(e.getMessage());</span>
+            }
+<span class="nc" id="L107">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Unable to initialize &quot; + getTable(), e);</span>
+<span class="nc" id="L108">            System.exit(1);</span>
+<span class="nc" id="L109">        }</span>
+<span class="nc" id="L110">    }</span>
+
+    @Override
+    public String getNextCode() {
+<span class="nc" id="L114">        return &quot;&quot;;</span>
+    }
+
+    // =====================================================================
+    // Columns
+    // =====================================================================
+    public JSONObject setTransactionNo(String transactionNo) {
+<span class="nc" id="L121">        return setValue(&quot;sTransNox&quot;, transactionNo);</span>
+    }
+
+    public String getTransactionNo() {
+<span class="nc" id="L125">        return (String) getValue(&quot;sTransNox&quot;);</span>
+    }
+
+    public JSONObject setEntryNo(Number entryNo) {
+<span class="nc" id="L129">        return setValue(&quot;nEntryNox&quot;, entryNo);</span>
+    }
+
+    public Number getEntryNo() {
+<span class="nc" id="L133">        return (Number) getValue(&quot;nEntryNox&quot;);</span>
+    }
+
+    public JSONObject setStockID(String stockID) {
+<span class="nc" id="L137">        return setValue(&quot;sStockIDx&quot;, stockID);</span>
+    }
+
+    public String getStockID() {
+<span class="nc" id="L141">        return (String) getValue(&quot;sStockIDx&quot;);</span>
+    }
+
+    public JSONObject setDescription(String description) {
+<span class="nc" id="L145">        return setValue(&quot;sDescript&quot;, description);</span>
+    }
+
+    public String getDescription() {
+<span class="nc" id="L149">        return (String) getValue(&quot;sDescript&quot;);</span>
+    }
+
+    public JSONObject setOldPrice(Number oldPrice) {
+<span class="nc" id="L153">        return setValue(&quot;nOldPrice&quot;, oldPrice);</span>
+    }
+
+    public Number getOldPrice() {
+<span class="nc" id="L157">        return (Number) getValue(&quot;nOldPrice&quot;);</span>
+    }
+
+    public JSONObject setUnitPrice(Number unitPrice) {
+<span class="nc" id="L161">        return setValue(&quot;nUnitPrce&quot;, unitPrice);</span>
+    }
+
+    public Number getUnitPrice() {
+<span class="nc" id="L165">        return (Number) getValue(&quot;nUnitPrce&quot;);</span>
+    }
+
+    public JSONObject setQuantityOnHand(Number quantityOnHand) {
+<span class="nc" id="L169">        return setValue(&quot;nQtyOnHnd&quot;, quantityOnHand);</span>
+    }
+
+    public Number getQuantityOnHand() {
+<span class="nc" id="L173">        return (Number) getValue(&quot;nQtyOnHnd&quot;);</span>
+    }
+
+    public JSONObject setRecordOrder(Number recordOrder) {
+<span class="nc" id="L177">        return setValue(&quot;nRecOrder&quot;, recordOrder);</span>
+    }
+
+    public Number getRecordOrder() {
+<span class="nc" id="L181">        return (Number) getValue(&quot;nRecOrder&quot;);</span>
+    }
+
+    public JSONObject setQuantity(Number quantity) {
+<span class="nc" id="L185">        return setValue(&quot;nQuantity&quot;, quantity);</span>
+    }
+
+    public Number getQuantity() {
+<span class="nc" id="L189">        return (Number) getValue(&quot;nQuantity&quot;);</span>
+    }
+
+    public JSONObject setReceivedQuantity(Number receivedQuantity) {
+<span class="nc" id="L193">        return setValue(&quot;nReceived&quot;, receivedQuantity);</span>
+    }
+
+    public Number getReceivedQuantity() {
+<span class="nc" id="L197">        return (Number) getValue(&quot;nReceived&quot;);</span>
+    }
+
+    public JSONObject setCancelledQuantity(Number cancelledQuantity) {
+<span class="nc" id="L201">        return setValue(&quot;nCancelld&quot;, cancelledQuantity);</span>
+    }
+
+    public Number getCancelledQuantity() {
+<span class="nc" id="L205">        return (Number) getValue(&quot;nCancelld&quot;);</span>
+    }
+
+    /** Source document code (sSourceCd); the method name keeps the original spelling. */
+    public JSONObject setSouceCode(String sourceCode) {
+<span class="nc" id="L210">        return setValue(&quot;sSourceCd&quot;, sourceCode);</span>
+    }
+
+    public String getSouceCode() {
+<span class="nc" id="L214">        return (String) getValue(&quot;sSourceCd&quot;);</span>
+    }
+
+    /** Source document number (sSourceNo); the method name keeps the original spelling. */
+    public JSONObject setSouceNo(String sourceNo) {
+<span class="nc" id="L219">        return setValue(&quot;sSourceNo&quot;, sourceNo);</span>
+    }
+
+    public String getSouceNo() {
+<span class="nc" id="L223">        return (String) getValue(&quot;sSourceNo&quot;);</span>
+    }
+
+    public JSONObject setModifiedDate(Date modifiedDate) {
+<span class="nc" id="L227">        return setValue(&quot;dModified&quot;, modifiedDate);</span>
+    }
+
+    public Date getModifiedDate() {
+<span class="nc" id="L231">        return (Date) getValue(&quot;dModified&quot;);</span>
+    }
+
+    /** Brand filter of the item search (kept in memory, not saved). */
+    public String setBrandId(String brandID) {
+<span class="nc" id="L236">        return lsBrand = brandID;</span>
+    }
+
+    public String getBrandId() {
+<span class="nc" id="L240">        return lsBrand;</span>
+    }
+
+    public JSONObject setSourceEntryNo(Number entryNo) {
+<span class="nc" id="L244">        return setValue(&quot;nSrEtryNo&quot;, entryNo);</span>
+    }
+
+    public Number getSourceEntryNo() {
+<span class="nc" id="L248">        return (Number) getValue(&quot;nSrEtryNo&quot;);</span>
+    }
+
+    // =====================================================================
+    // Reference records (lazy; see ModelReferences)
+    // =====================================================================
+    public Model_Branch Branch() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L255" title="All 2 branches missed.">        if (poBranch == null) {</span>
+<span class="nc" id="L256">            poBranch = new ParamModels(poGRider).Branch();</span>
+        }
+<span class="nc" id="L258">        return ModelReferences.load(poBranch, ModelReferences.text(getValue(&quot;sBranchCd&quot;)), &quot;Branch&quot;, Model_Branch::getBranchCode);</span>
+    }
+
+    public Model_Industry Industry() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (poIndustry == null) {</span>
+<span class="nc" id="L263">            poIndustry = new ParamModels(poGRider).Industry();</span>
+        }
+<span class="nc" id="L265">        return ModelReferences.load(poIndustry, ModelReferences.text(getValue(&quot;sIndstCdx&quot;)), &quot;Industry&quot;, Model_Industry::getIndustryId);</span>
+    }
+
+    public Model_Category Category() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        if (poCategory == null) {</span>
+<span class="nc" id="L270">            poCategory = new ParamModels(poGRider).Category();</span>
+        }
+<span class="nc" id="L272">        return ModelReferences.load(poCategory, ModelReferences.text(getValue(&quot;sCategrCd&quot;)), &quot;Category&quot;, Model_Category::getCategoryId);</span>
+    }
+
+    /** NOTE: reads column sCompanyID, as the original. */
+    public Model_Company Company() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (poCompany == null) {</span>
+<span class="nc" id="L278">            poCompany = new ParamModels(poGRider).Company();</span>
+        }
+<span class="nc" id="L280">        return ModelReferences.load(poCompany, ModelReferences.text(getValue(&quot;sCompanyID&quot;)), &quot;Company&quot;, Model_Company::getCompanyId);</span>
+    }
+
+    public Model_Term Term() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (poTerm == null) {</span>
+<span class="nc" id="L285">            poTerm = new ParamModels(poGRider).Term();</span>
+        }
+<span class="nc" id="L287">        return ModelReferences.load(poTerm, ModelReferences.text(getValue(&quot;sTermCode&quot;)), &quot;Term&quot;, Model_Term::getTermId);</span>
+    }
+
+    /** Not cached (transaction record). */
+    public Model_Inventory Inventory() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        if (poInventory == null) {</span>
+<span class="nc" id="L293">            poInventory = new InvModels(poGRider).Inventory();</span>
+        }
+<span class="nc" id="L295">        return ModelReferences.load(poInventory, ModelReferences.text(getValue(&quot;sStockIDx&quot;)), null, Model_Inventory::getStockId);</span>
+    }
+
+    /** Not cached (transaction record). */
+    public Model_Inv_Master InventoryMaster() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (poInventoryMaster == null) {</span>
+<span class="nc" id="L301">            poInventoryMaster = new InvModels(poGRider).InventoryMaster();</span>
+        }
+<span class="nc" id="L303">        return ModelReferences.load(poInventoryMaster, ModelReferences.text(getValue(&quot;sStockIDx&quot;)), null, Model_Inv_Master::getStockId);</span>
+    }
+
+    /** Brand of the search filter (setBrandId), not a column. */
+    public Model_Brand Brand() throws SQLException, GuanzonException {
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (poBrand == null) {</span>
+<span class="nc" id="L309">            poBrand = new ParamModels(poGRider).Brand();</span>
+        }
+<span class="nc bnc" id="L311" title="All 4 branches missed.">        if (lsBrand == null || lsBrand.isEmpty()) {</span>
+<span class="nc" id="L312">            poBrand.initialize();</span>
+<span class="nc" id="L313">            return poBrand;</span>
+        }
+<span class="nc bnc" id="L315" title="All 4 branches missed.">        if (poBrand.getEditMode() == EditMode.READY &amp;&amp; poBrand.getBrandId().equals(lsBrand)) {</span>
+<span class="nc" id="L316">            return poBrand;</span>
+        }
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (ReferenceCache.tryLoad(&quot;Brand&quot;, lsBrand, poBrand)) {</span>
+<span class="nc" id="L319">            return poBrand;</span>
+        }
+<span class="nc" id="L321">        JSONObject loJSON = poBrand.openRecord(lsBrand);</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">        if (&quot;success&quot;.equals(loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L323">            ReferenceCache.store(&quot;Brand&quot;, lsBrand, poBrand);</span>
+        } else {
+<span class="nc" id="L325">            poBrand.initialize();</span>
+        }
+<span class="nc" id="L327">        return poBrand;</span>
+    }
+
+    public Model_Color Color() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L331" title="All 2 branches missed.">        if (poColor == null) {</span>
+<span class="nc" id="L332">            poColor = new ParamModels(poGRider).Color();</span>
+        }
+<span class="nc" id="L334">        return ModelReferences.load(poColor, ModelReferences.text(getValue(&quot;sColorIDx&quot;)), &quot;Color&quot;, Model_Color::getColorId);</span>
+    }
+
+    public Model_Inv_Type InventoryType() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        if (poInv_Type == null) {</span>
+<span class="nc" id="L339">            poInv_Type = new ParamModels(poGRider).InventoryType();</span>
+        }
+<span class="nc" id="L341">        return ModelReferences.load(poInv_Type, ModelReferences.text(getValue(&quot;sInvTypCd&quot;)), &quot;Inv_Type&quot;, Model_Inv_Type::getInventoryTypeId);</span>
+    }
+
+    public Model_Measure Measure() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (poMeasure == null) {</span>
+<span class="nc" id="L346">            poMeasure = new ParamModels(poGRider).Measurement();</span>
+        }
+<span class="nc" id="L348">        return ModelReferences.load(poMeasure, ModelReferences.text(getValue(&quot;sMeasurID&quot;)), &quot;Measure&quot;, Model_Measure::getMeasureId);</span>
+    }
+
+    public Model_Model Model() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        if (poModel == null) {</span>
+<span class="nc" id="L353">            poModel = new ParamModels(poGRider).Model();</span>
+        }
+<span class="nc" id="L355">        return ModelReferences.load(poModel, ModelReferences.text(getValue(&quot;sModelIDx&quot;)), &quot;Model&quot;, Model_Model::getModelId);</span>
+    }
+
+    /** NOTE: opened by this line's sTransNox, as the original. Not cached (transaction record). */
+    public Model_Inv_Stock_Request_Master InvStockRequestMaster() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (poInvStockMaster == null) {</span>
+<span class="nc" id="L361">            poInvStockMaster = new InvWarehouseModels(poGRider).InventoryStockRequestMaster();</span>
+        }
+<span class="nc" id="L363">        return ModelReferences.load(poInvStockMaster, ModelReferences.text(getValue(&quot;sTransNox&quot;)), null,</span>
+                Model_Inv_Stock_Request_Master::getTransactionNo);
+    }
+
+    /** Stock request line of this PO line (sSourceNo + sStockIDx). Not cached (transaction record). */
+    public Model_Inv_Stock_Request_Detail InvStockRequestDetail() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        if (poInvStockDetail == null) {</span>
+<span class="nc" id="L370">            poInvStockDetail = new InvWarehouseModels(poGRider).InventoryStockRequestDetail();</span>
+        }
+<span class="nc" id="L372">        return ModelReferences.load(poInvStockDetail, ModelReferences.text(getValue(&quot;sSourceNo&quot;)), null,</span>
+                Model_Inv_Stock_Request_Detail::getTransactionNo,
+<span class="nc" id="L374">                (loModel, lsId) -&gt; loModel.openRecordByReference(lsId, getValue(&quot;sStockIDx&quot;)));</span>
+    }
+
+    /** QUOTATION LINK (cas-poqt). Not cached (transaction record). */
+    public Model_PO_Quotation_Master POQuotationMaster() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        if (poPOQuotationMaster == null) {</span>
+<span class="nc" id="L380">            poPOQuotationMaster = new QuotationModels(poGRider).POQuotationMaster();</span>
+        }
+<span class="nc" id="L382">        return ModelReferences.load(poPOQuotationMaster, ModelReferences.text(getValue(&quot;sSourceNo&quot;)), null,</span>
+                Model_PO_Quotation_Master::getTransactionNo);
+    }
+
+    /** QUOTATION LINK (cas-poqt): quotation line of this PO line. Not cached (transaction record). */
+    public Model_PO_Quotation_Detail POQuotationDetail() throws GuanzonException, SQLException {
+<span class="nc bnc" id="L388" title="All 2 branches missed.">        if (poPOQuotationDetail == null) {</span>
+<span class="nc" id="L389">            poPOQuotationDetail = new QuotationModels(poGRider).POQuotationDetails();</span>
+        }
+<span class="nc" id="L391">        return ModelReferences.load(poPOQuotationDetail, ModelReferences.text(getValue(&quot;sSourceNo&quot;)), null,</span>
+                Model_PO_Quotation_Detail::getTransactionNo,
+<span class="nc" id="L393">                (loModel, lsId) -&gt; loModel.openRecord(lsId, (String) getValue(&quot;sStockIDx&quot;)));</span>
+    }
+
+    /** Opens the line of a PO (Id1) for an item (Id2). */
+    public JSONObject openRecordByReference(String Id1, Object Id2) throws SQLException, GuanzonException {
+<span class="nc" id="L398">        String lsSQL = MiscUtil.addCondition(MiscUtil.makeSelect(this),</span>
+<span class="nc" id="L399">                &quot;sTransNox = &quot; + SQLUtil.toSQL(Id1) + &quot; AND sStockIDx = &quot; + SQLUtil.toSQL(Id2));</span>
+
+<span class="nc" id="L401">        poJSON = new JSONObject();</span>
+<span class="nc" id="L402">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+        try {
+<span class="nc bnc" id="L404" title="All 2 branches missed.">            if (loRS.next()) {</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">                for (int lnCtr = 1; lnCtr &lt;= loRS.getMetaData().getColumnCount(); lnCtr++) {</span>
+<span class="nc" id="L406">                    setValue(lnCtr, loRS.getObject(lnCtr));</span>
+                }
+<span class="nc" id="L408">                pnEditMode = EditMode.READY;</span>
+<span class="nc" id="L409">                poJSON.put(&quot;result&quot;, &quot;success&quot;);</span>
+<span class="nc" id="L410">                poJSON.put(&quot;message&quot;, &quot;Record loaded successfully.&quot;);</span>
+            } else {
+<span class="nc" id="L412">                poJSON.put(&quot;result&quot;, &quot;error&quot;);</span>
+<span class="nc" id="L413">                poJSON.put(&quot;message&quot;, &quot;No record to load.&quot;);</span>
+            }
+<span class="nc" id="L415">        } catch (SQLException e) {</span>
+<span class="nc" id="L416">            poJSON.put(&quot;result&quot;, &quot;error&quot;);</span>
+<span class="nc" id="L417">            poJSON.put(&quot;message&quot;, e.getMessage());</span>
+        } finally {
+<span class="nc" id="L419">            MiscUtil.close(loRS);</span>
+        }
+<span class="nc" id="L421">        return poJSON;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

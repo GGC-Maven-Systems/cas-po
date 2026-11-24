@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderSearch.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderSearch.java</span></div><h1>PurchaseOrderSearch.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import static ph.com.guanzongroup.cas.po.utility.Results.isSuccess;
+import java.sql.SQLException;
+import java.util.function.Supplier;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.constant.RecordStatus;
+import org.guanzon.cas.client.account.AP_Client_Master;
+import org.guanzon.cas.client.model.Model_AP_Client_Master;
+import org.guanzon.cas.client.services.ClientControllers;
+import org.guanzon.cas.inv.Inventory;
+import org.guanzon.cas.inv.model.Model_Inventory;
+import org.guanzon.cas.inv.services.InvControllers;
+import org.guanzon.cas.parameter.Branch;
+import org.guanzon.cas.parameter.Brand;
+import org.guanzon.cas.parameter.Category;
+import org.guanzon.cas.parameter.Company;
+import org.guanzon.cas.parameter.Department;
+import org.guanzon.cas.parameter.Industry;
+import org.guanzon.cas.parameter.Project;
+import org.guanzon.cas.parameter.Term;
+import org.guanzon.cas.parameter.services.ParamControllers;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.utility.Results;
+import org.json.simple.JSONObject;
+
+/**
+ * Lookups that fill the Purchase Order: branch, supplier, term, items, ...
+ *
+ * &lt;p&gt;
+ * Each search opens the lookup dialog of its parameter and, when a record is
+ * picked, copies it into the PO. Works with any {@link PurchaseOrder}
+ * controller; the ...ForReport searches only return the picked record.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The pick... methods load a record by its key (a row picked from an
+ * auto-suggest list, see {@link PurchaseOrderSuggestions}) and copy it into
+ * the PO the same way, without opening the dialog.&lt;/p&gt;
+ */
+public class PurchaseOrderSearch {
+
+    private final PurchaseOrder poPO;
+    private final Supplier&lt;ParamControllers&gt; poParams;
+    private final Supplier&lt;InvControllers&gt; poInventory;
+    private final Supplier&lt;ClientControllers&gt; poClients;
+
+    public PurchaseOrderSearch(PurchaseOrder foPO, Supplier&lt;ParamControllers&gt; foParams,
+<span class="fc" id="L49">            Supplier&lt;InvControllers&gt; foInventory, Supplier&lt;ClientControllers&gt; foClients) {</span>
+<span class="fc" id="L50">        poPO = foPO;</span>
+<span class="fc" id="L51">        poParams = foParams;</span>
+<span class="fc" id="L52">        poInventory = foInventory;</span>
+<span class="fc" id="L53">        poClients = foClients;</span>
+<span class="fc" id="L54">    }</span>
+
+    private Model_PO_Master master() {
+<span class="nc" id="L57">        return poPO.Master();</span>
+    }
+
+    // =====================================================================
+    // Header
+    // =====================================================================
+    public JSONObject branch(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L64">        Branch loBranch = poParams.get().Branch();</span>
+<span class="nc" id="L65">        loBranch.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L66">        JSONObject loJSON = loBranch.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L68">            master().setBranchCode(loBranch.getModel().getBranchCode());</span>
+        }
+<span class="nc" id="L70">        return loJSON;</span>
+    }
+
+    public JSONObject industry(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L74">        Industry loIndustry = poParams.get().Industry();</span>
+<span class="nc" id="L75">        loIndustry.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L76">        JSONObject loJSON = loIndustry.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L78">            master().setIndustryID(loIndustry.getModel().getIndustryId());</span>
+        }
+<span class="nc" id="L80">        return loJSON;</span>
+    }
+
+    public JSONObject category(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L84">        Category loCategory = poParams.get().Category();</span>
+<span class="nc" id="L85">        loCategory.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L86">        JSONObject loJSON = loCategory.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L88">            master().setCategoryCode(loCategory.getModel().getCategoryId());</span>
+        }
+<span class="nc" id="L90">        return loJSON;</span>
+    }
+
+    public JSONObject term(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L94">        Term loTerm = poParams.get().Term();</span>
+<span class="nc" id="L95">        loTerm.setRecordStatus(&quot;1&quot;);</span>
+<span class="nc" id="L96">        JSONObject loJSON = loTerm.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L98">            master().setTermCode(loTerm.getModel().getTermId());</span>
+        }
+<span class="nc" id="L100">        return loJSON;</span>
+    }
+
+    /** Term by code (auto-suggest pick). */
+    public JSONObject pickTerm(String fsTermCode) throws SQLException, GuanzonException {
+<span class="nc" id="L105">        Term loTerm = poParams.get().Term();</span>
+<span class="nc" id="L106">        JSONObject loJSON = loTerm.getModel().openRecord(fsTermCode);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L108">            master().setTermCode(loTerm.getModel().getTermId());</span>
+        }
+<span class="nc" id="L110">        return loJSON;</span>
+    }
+
+    /** Supplier, with its address, contact and (when set) its default term. */
+    public JSONObject supplier(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L115">        AP_Client_Master loSupplier = poClients.get().APClientMaster();</span>
+<span class="nc" id="L116">        loSupplier.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L117">        JSONObject loJSON = loSupplier.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L119">            applySupplier(loSupplier.getModel());</span>
+        }
+<span class="nc" id="L121">        return loJSON;</span>
+    }
+
+    /** Supplier by client id (auto-suggest pick). */
+    public JSONObject pickSupplier(String fsClientId) throws SQLException, GuanzonException {
+<span class="nc" id="L126">        AP_Client_Master loSupplier = poClients.get().APClientMaster();</span>
+<span class="nc" id="L127">        JSONObject loJSON = loSupplier.getModel().openRecord(fsClientId);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L129">            applySupplier(loSupplier.getModel());</span>
+        }
+<span class="nc" id="L131">        return loJSON;</span>
+    }
+
+    private void applySupplier(Model_AP_Client_Master foSupplier) throws SQLException, GuanzonException {
+<span class="nc" id="L135">        master().setSupplierID(foSupplier.getClientId());</span>
+<span class="nc" id="L136">        master().setAddressID(foSupplier.ClientAddress().getAddressId());</span>
+<span class="nc" id="L137">        master().setContactID(foSupplier.ClientInstitutionContact().getContactPId());</span>
+<span class="nc" id="L138">        String lsTerm = foSupplier.getTermId();</span>
+<span class="nc bnc" id="L139" title="All 4 branches missed.">        if (lsTerm != null &amp;&amp; !lsTerm.isEmpty()) {</span>
+<span class="nc" id="L140">            master().setTermCode(lsTerm);</span>
+        }
+<span class="nc" id="L142">    }</span>
+
+    /** Project title, stored as the PO reference. */
+    public JSONObject project(String fsValue) throws SQLException, GuanzonException {
+<span class="nc" id="L146">        Project loProject = poParams.get().Project();</span>
+<span class="nc" id="L147">        loProject.setRecordStatus(&quot;1&quot;);</span>
+<span class="nc" id="L148">        JSONObject loJSON = loProject.searchRecord(fsValue, true);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L150">            master().setReference(loProject.getModel().getProjectID());</span>
+        }
+<span class="nc" id="L152">        return loJSON;</span>
+    }
+
+    /** Project title by code (auto-suggest pick). */
+    public JSONObject pickProject(String fsProjectCode) throws SQLException, GuanzonException {
+<span class="nc" id="L157">        Project loProject = poParams.get().Project();</span>
+<span class="nc" id="L158">        JSONObject loJSON = loProject.getModel().openRecord(fsProjectCode);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L160">            master().setReference(loProject.getModel().getProjectID());</span>
+        }
+<span class="nc" id="L162">        return loJSON;</span>
+    }
+
+    public JSONObject company(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L166">        Company loCompany = poParams.get().Company();</span>
+<span class="nc" id="L167">        loCompany.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L168">        JSONObject loJSON = loCompany.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L170">            master().setCompanyID(loCompany.getModel().getCompanyId());</span>
+        }
+<span class="nc" id="L172">        return loJSON;</span>
+    }
+
+    /** Destination branch. */
+    public JSONObject destination(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L177">        Branch loBranch = poParams.get().Branch();</span>
+<span class="nc" id="L178">        loBranch.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L179">        JSONObject loJSON = loBranch.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L181">            master().setDestinationID(loBranch.getModel().getBranchCode());</span>
+        }
+<span class="nc" id="L183">        return loJSON;</span>
+    }
+
+    /** Destination branch by code (auto-suggest pick). */
+    public JSONObject pickDestination(String fsBranchCode) throws SQLException, GuanzonException {
+<span class="nc" id="L188">        Branch loBranch = poParams.get().Branch();</span>
+<span class="nc" id="L189">        JSONObject loJSON = loBranch.getModel().openRecord(fsBranchCode);</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L191">            master().setDestinationID(loBranch.getModel().getBranchCode());</span>
+        }
+<span class="nc" id="L193">        return loJSON;</span>
+    }
+
+    /** Department as destination. */
+    public JSONObject department(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L198">        Department loDepartment = poParams.get().Department();</span>
+<span class="nc" id="L199">        loDepartment.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L200">        JSONObject loJSON = loDepartment.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L202">            master().setDestinationID(loDepartment.getModel().getDepartmentId());</span>
+        }
+<span class="nc" id="L204">        return loJSON;</span>
+    }
+
+    // =====================================================================
+    // Detail
+    // =====================================================================
+    public JSONObject brand(String fsValue, boolean fbByCode, int fnRow) throws SQLException, GuanzonException {
+<span class="nc" id="L211">        Brand loBrand = poParams.get().Brand();</span>
+<span class="nc" id="L212">        loBrand.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L213">        JSONObject loJSON = loBrand.searchRecord(fsValue, fbByCode, master().getIndustryID());</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L215">            poPO.Detail(fnRow).setBrandId((String) loJSON.get(&quot;sBrandIDx&quot;));</span>
+        }
+<span class="nc" id="L217">        return loJSON;</span>
+    }
+
+    /**
+     * Item lookup for a detail row: puts the item and its cost on the row.
+     * An item may appear only once among manual lines (rule in the validator).
+     *
+     * @param fbBySupplier limit to the PO's supplier
+     * @param fbByIndustry limit to the PO's industry (false for the &quot;General&quot; variants)
+     * @param fsRecordStatus inventory record statuses to include
+     * @param fsLabel prefix of the duplicate message (&quot;Model: &quot; / &quot;Barcode: &quot;)
+     * @param fbSetBrand also copy the item's brand to the row
+     */
+    public JSONObject inventory(String fsValue, boolean fbByCode, int fnRow, boolean fbBySupplier,
+            boolean fbByIndustry, String fsRecordStatus, String fsLabel, boolean fbSetBrand)
+            throws SQLException, GuanzonException {
+<span class="nc" id="L233">        Model_PO_Detail loRow = poPO.Detail(fnRow);</span>
+<span class="nc" id="L234">        Inventory loInventory = poInventory.get().Inventory();</span>
+<span class="nc" id="L235">        loInventory.setRecordStatus(fsRecordStatus);</span>
+
+<span class="nc" id="L237">        String lsSupplier = emptyToNull(master().getSupplierID());</span>
+<span class="nc" id="L238">        String lsBrand = emptyToNull(loRow.getBrandId());</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        String lsIndustry = fbByIndustry ? emptyToNull(master().getIndustryID()) : null;</span>
+
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        JSONObject loJSON = loInventory.searchRecord(fsValue, fbByCode,</span>
+<span class="nc" id="L242">                fbBySupplier ? lsSupplier : null, lsBrand, lsIndustry, master().getCategoryCode());</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L244">            return loJSON;</span>
+        }
+
+<span class="nc" id="L247">        JSONObject loApply = applyInventory(loRow, fnRow, loInventory.getModel(), fsLabel, fbSetBrand);</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">        return isSuccess(loApply) ? loJSON : loApply;</span>
+    }
+
+    /**
+     * Item by stock id for a detail row (auto-suggest pick); the same checks
+     * and copying as {@link #inventory}.
+     */
+    public JSONObject pickInventory(String fsStockId, int fnRow, String fsLabel, boolean fbSetBrand)
+            throws SQLException, GuanzonException {
+<span class="nc" id="L257">        Model_PO_Detail loRow = poPO.Detail(fnRow);</span>
+<span class="nc" id="L258">        Inventory loInventory = poInventory.get().Inventory();</span>
+<span class="nc" id="L259">        JSONObject loJSON = loInventory.getModel().openRecord(fsStockId);</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L261">            return loJSON;</span>
+        }
+<span class="nc" id="L263">        return applyInventory(loRow, fnRow, loInventory.getModel(), fsLabel, fbSetBrand);</span>
+    }
+
+    private JSONObject applyInventory(Model_PO_Detail foRow, int fnRow, Model_Inventory foItem, String fsLabel,
+            boolean fbSetBrand) throws SQLException, GuanzonException {
+<span class="nc" id="L268">        String lsStockId = foItem.getStockId();</span>
+<span class="nc" id="L269">        JSONObject loUnique = poPO.rules().validateUniqueItem(fnRow, lsStockId, fsLabel + foItem.getDescription());</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (!isSuccess(loUnique)) {</span>
+<span class="nc" id="L271">            return loUnique;</span>
+        }
+
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (fbSetBrand) {</span>
+<span class="nc" id="L275">            foRow.setBrandId(foItem.getBrandId());</span>
+        }
+<span class="nc" id="L277">        foRow.setStockID(lsStockId);</span>
+<span class="nc" id="L278">        foRow.setUnitPrice(foItem.getCost().doubleValue());</span>
+<span class="nc" id="L279">        foRow.setOldPrice(foItem.getCost().doubleValue());</span>
+<span class="nc" id="L280">        return Results.success();</span>
+    }
+
+    // =====================================================================
+    // Report filters (return the picked record only)
+    // =====================================================================
+    public JSONObject categoryForReport(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L287">        Category loCategory = poParams.get().Category();</span>
+<span class="nc" id="L288">        loCategory.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L289">        JSONObject loJSON = loCategory.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L291">            loJSON.put(&quot;category&quot;, loCategory.getModel().getDescription());</span>
+<span class="nc" id="L292">            loJSON.put(&quot;categoryID&quot;, loCategory.getModel().getCategoryId());</span>
+        }
+<span class="nc" id="L294">        return loJSON;</span>
+    }
+
+    public JSONObject destinationForReport(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L298">        Branch loBranch = poParams.get().Branch();</span>
+<span class="nc" id="L299">        loBranch.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L300">        JSONObject loJSON = loBranch.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L302">            loJSON.put(&quot;destination&quot;, loBranch.getModel().getBranchName());</span>
+<span class="nc" id="L303">            loJSON.put(&quot;destinationID&quot;, loBranch.getModel().getBranchCode());</span>
+        }
+<span class="nc" id="L305">        return loJSON;</span>
+    }
+
+    public JSONObject branchForReport(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L309">        Branch loBranch = poParams.get().Branch();</span>
+<span class="nc" id="L310">        loBranch.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L311">        JSONObject loJSON = loBranch.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L313">            loJSON.put(&quot;branch&quot;, loBranch.getModel().getBranchName());</span>
+<span class="nc" id="L314">            loJSON.put(&quot;branchID&quot;, loBranch.getModel().getBranchCode());</span>
+        }
+<span class="nc" id="L316">        return loJSON;</span>
+    }
+
+    public JSONObject supplierForReport(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
+<span class="nc" id="L320">        AP_Client_Master loSupplier = poClients.get().APClientMaster();</span>
+<span class="nc" id="L321">        loSupplier.setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L322">        JSONObject loJSON = loSupplier.searchRecord(fsValue, fbByCode);</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L324">            loJSON.put(&quot;supplier&quot;, loSupplier.getModel().Client().getCompanyName());</span>
+<span class="nc" id="L325">            loJSON.put(&quot;supplierID&quot;, loSupplier.getModel().Client().getClientId());</span>
+        }
+<span class="nc" id="L327">        return loJSON;</span>
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+    private static String emptyToNull(String fsValue) {
+<span class="nc bnc" id="L334" title="All 4 branches missed.">        return fsValue == null || fsValue.isEmpty() ? null : fsValue;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

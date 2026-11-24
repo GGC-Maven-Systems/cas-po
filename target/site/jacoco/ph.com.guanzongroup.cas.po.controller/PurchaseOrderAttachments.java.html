@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderAttachments.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderAttachments.java</span></div><h1>PurchaseOrderAttachments.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import static ph.com.guanzongroup.cas.po.utility.Results.error;
+import static ph.com.guanzongroup.cas.po.utility.Results.isSuccess;
+import static ph.com.guanzongroup.cas.po.utility.Results.success;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.apache.commons.codec.binary.Base64;
+import org.guanzon.appdriver.agent.systables.SysTableContollers;
+import org.guanzon.appdriver.agent.systables.TransactionAttachment;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscReplUtil;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.base.WebFile;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.appdriver.constant.RecordStatus;
+import org.guanzon.appdriver.token.RequestAccess;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+/**
+ * Attachments of one transaction: add, remove, load (download), and upload +
+ * save together with the transaction.
+ *
+ * &lt;p&gt;
+ * Nothing here is industry-specific, so every Purchase Order controller (and
+ * any other transaction) can hold one:&lt;/p&gt;
+ * &lt;pre&gt;
+ * private final PurchaseOrderAttachments poAttachments = new PurchaseOrderAttachments(poGRider, SOURCE_CODE);
+ *
+ * //willSave:    poAttachments.prepareForSave(Master().getTransactionNo(), Master().getBranchCode());
+ * //saveOthers:  poAttachments.save();
+ * &lt;/pre&gt;
+ *
+ */
+public class PurchaseOrderAttachments {
+
+    /** WebFile system code for transaction attachments. */
+    private static final String WEB_FILE_SYSTEM = &quot;0032&quot;;
+
+    private final GRiderCAS poGRider;
+    private final String psSourceCode;
+<span class="fc" id="L62">    private List&lt;TransactionAttachment&gt; paAttachments = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L64">    public PurchaseOrderAttachments(GRiderCAS foGRider, String fsSourceCode) {</span>
+<span class="fc" id="L65">        poGRider = foGRider;</span>
+<span class="fc" id="L66">        psSourceCode = fsSourceCode;</span>
+<span class="fc" id="L67">    }</span>
+
+    /** Local folder where attachments are kept before upload / after download. */
+    protected String getTempPath() {
+<span class="nc" id="L71">        return System.getProperty(&quot;sys.default.path.temp.attachments&quot;);</span>
+    }
+
+    /** Access token file used for upload/download. */
+    protected String getAccessTokenFile() {
+<span class="nc" id="L76">        return System.getProperty(&quot;sys.default.access.token&quot;);</span>
+    }
+
+    // =====================================================================
+    // List
+    // =====================================================================
+    public void reset() {
+<span class="nc" id="L83">        paAttachments = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L84">    }</span>
+
+    public TransactionAttachment get(int fnRow) {
+<span class="nc" id="L87">        return paAttachments.get(fnRow);</span>
+    }
+
+    public int getCount() {
+<span class="nc" id="L91">        return paAttachments.size();</span>
+    }
+
+    /** Attachments not flagged as removed (inactive). */
+    public int getActiveCount() {
+<span class="nc" id="L96">        int lnCount = 0;</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        for (TransactionAttachment loAttachment : paAttachments) {</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            if (!RecordStatus.INACTIVE.equals(loAttachment.getModel().getRecordStatus())) {</span>
+<span class="nc" id="L99">                lnCount++;</span>
+            }
+<span class="nc" id="L101">        }</span>
+<span class="nc" id="L102">        return lnCount;</span>
+    }
+
+    private TransactionAttachment newAttachment() throws SQLException, GuanzonException {
+<span class="nc" id="L106">        return new SysTableContollers(poGRider, null).TransactionAttachment();</span>
+    }
+
+    /** Adds an empty attachment row (every new row is initialized with newRecord()). */
+    public JSONObject add() throws SQLException, GuanzonException {
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (!paAttachments.isEmpty()) {</span>
+<span class="nc" id="L112">            String lsLastTransNo = paAttachments.get(paAttachments.size() - 1).getModel().getTransactionNo();</span>
+<span class="nc bnc" id="L113" title="All 4 branches missed.">            if (lsLastTransNo == null || lsLastTransNo.isEmpty()) {</span>
+<span class="nc" id="L114">                return error(&quot;Unable to add transaction attachment.&quot;);</span>
+            }
+        }
+
+<span class="nc" id="L118">        TransactionAttachment loAttachment = newAttachment();</span>
+<span class="nc" id="L119">        JSONObject loJSON = loAttachment.newRecord();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L121">            return loJSON;</span>
+        }
+<span class="nc" id="L123">        paAttachments.add(loAttachment);</span>
+<span class="nc" id="L124">        return success();</span>
+    }
+
+    /**
+     * Adds a file, or re-activates it when the same file was removed earlier.
+     *
+     * @return row of the attachment, or -1 when it could not be added
+     */
+    public int add(String fsFileName, String fsSourceNo) throws SQLException, GuanzonException {
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; paAttachments.size(); lnCtr++) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            if (fsFileName.equals(paAttachments.get(lnCtr).getModel().getFileName())</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">                    &amp;&amp; RecordStatus.INACTIVE.equals(paAttachments.get(lnCtr).getModel().getRecordStatus())) {</span>
+<span class="nc" id="L136">                paAttachments.get(lnCtr).getModel().setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L137">                return lnCtr;</span>
+            }
+        }
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (!isSuccess(add())) {</span>
+<span class="nc" id="L142">            return -1;</span>
+        }
+<span class="nc" id="L144">        int lnRow = paAttachments.size() - 1;</span>
+<span class="nc" id="L145">        paAttachments.get(lnRow).getModel().setFileName(fsFileName);</span>
+<span class="nc" id="L146">        paAttachments.get(lnRow).getModel().setSourceNo(fsSourceNo);</span>
+<span class="nc" id="L147">        paAttachments.get(lnRow).getModel().setRecordStatus(RecordStatus.ACTIVE);</span>
+<span class="nc" id="L148">        return lnRow;</span>
+    }
+
+    /** New rows are dropped; saved rows are flagged inactive. */
+    public JSONObject remove(int fnRow) {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (paAttachments.isEmpty()) {</span>
+<span class="nc" id="L154">            return error(&quot;No transaction attachment to be removed.&quot;);</span>
+        }
+<span class="nc bnc" id="L156" title="All 4 branches missed.">        if (fnRow &lt; 0 || fnRow &gt;= paAttachments.size()) {</span>
+<span class="nc" id="L157">            return error(&quot;Invalid attachment row.&quot;);</span>
+        }
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (paAttachments.get(fnRow).getEditMode() == EditMode.ADDNEW) {</span>
+<span class="nc" id="L161">            paAttachments.remove(fnRow);</span>
+        } else {
+<span class="nc" id="L163">            paAttachments.get(fnRow).getModel().setRecordStatus(RecordStatus.INACTIVE);</span>
+        }
+<span class="nc" id="L165">        return success();</span>
+    }
+
+    /** Copies a file the user picked into the temp attachment folder. */
+    public JSONObject copyToTemp(String fsPath) {
+        try {
+<span class="nc" id="L171">            Path loSource = Paths.get(fsPath);</span>
+<span class="nc" id="L172">            Path loTargetDir = Paths.get(getTempPath());</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            if (!Files.exists(loTargetDir)) {</span>
+<span class="nc" id="L174">                Files.createDirectories(loTargetDir);</span>
+            }
+<span class="nc" id="L176">            Files.copy(loSource, loTargetDir.resolve(loSource.getFileName()), StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="nc" id="L177">            return success();</span>
+<span class="nc" id="L178">        } catch (IOException ex) {</span>
+<span class="nc" id="L179">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Unable to copy &quot; + fsPath, ex);</span>
+<span class="nc" id="L180">            return error(&quot;Unable to copy file: &quot; + ex.getMessage());</span>
+        }
+    }
+
+    // =====================================================================
+    // Load
+    // =====================================================================
+    /**
+     * Opens the transaction's attachments and downloads each file to the temp
+     * folder. A failed download is reported in the result but does not stop
+     * the other files from loading.
+     *
+     * @param fbForUpdate open the attachment records for editing
+     */
+    public JSONObject load(String fsSourceNo, boolean fbForUpdate) throws SQLException, GuanzonException {
+<span class="nc" id="L195">        paAttachments = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L196">        List&lt;String&gt; laFailed = new ArrayList&lt;&gt;();</span>
+
+<span class="nc" id="L198">        List loList = newAttachment().getAttachments(psSourceCode, fsSourceNo);</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (Object loId : loList) {</span>
+<span class="nc" id="L200">            TransactionAttachment loAttachment = newAttachment();</span>
+<span class="nc" id="L201">            JSONObject loJSON = loAttachment.openRecord((String) loId);</span>
+<span class="nc bnc" id="L202" title="All 4 branches missed.">            if (isSuccess(loJSON) &amp;&amp; fbForUpdate) {</span>
+<span class="nc" id="L203">                loAttachment.updateRecord();</span>
+            }
+<span class="nc" id="L205">            paAttachments.add(loAttachment);</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (!download(loAttachment)) {</span>
+<span class="nc" id="L208">                laFailed.add(loAttachment.getModel().getFileName());</span>
+            }
+<span class="nc" id="L210">        }</span>
+
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        if (!laFailed.isEmpty()) {</span>
+<span class="nc" id="L213">            return error(&quot;Unable to download: &quot; + String.join(&quot;, &quot;, laFailed));</span>
+        }
+<span class="nc" id="L215">        return success();</span>
+    }
+
+    private boolean download(TransactionAttachment foAttachment) {
+        try {
+<span class="nc" id="L220">            JSONObject loJSON = WebFile.DownloadFile(WebFile.getAccessToken(getAccessTokenFile()),</span>
+                    WEB_FILE_SYSTEM, &quot;&quot;,
+<span class="nc" id="L222">                    foAttachment.getModel().getFileName(),</span>
+                    psSourceCode,
+<span class="nc" id="L224">                    foAttachment.getModel().getSourceNo(),</span>
+                    &quot;&quot;);
+<span class="nc bnc" id="L226" title="All 2 branches missed.">            if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L227">                Logger.getLogger(getClass().getName()).log(Level.WARNING, &quot;Download failed: {0}&quot;, loJSON.toJSONString());</span>
+<span class="nc" id="L228">                return false;</span>
+            }
+
+<span class="nc" id="L231">            JSONObject loPayload = (JSONObject) loJSON.get(&quot;payload&quot;);</span>
+<span class="nc" id="L232">            return WebFile.Base64ToFile((String) loPayload.get(&quot;data&quot;),</span>
+<span class="nc" id="L233">                    (String) loPayload.get(&quot;hash&quot;),</span>
+<span class="nc" id="L234">                    getTempPath() + &quot;/&quot;,</span>
+<span class="nc" id="L235">                    (String) loPayload.get(&quot;filename&quot;));</span>
+<span class="nc" id="L236">        } catch (Exception ex) {</span>
+<span class="nc" id="L237">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Download failed&quot;, ex);</span>
+<span class="nc" id="L238">            return false;</span>
+        }
+    }
+
+    // =====================================================================
+    // Save (called from the controller's willSave / saveOthers)
+    // =====================================================================
+    /**
+     * Before saving: links each attachment to the transaction, renames new
+     * files whose name is already used, and uploads files not yet sent.
+     * Stops at the first upload error.
+     */
+    public JSONObject prepareForSave(String fsSourceNo, String fsBranchCode) throws SQLException, GuanzonException {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        for (int lnCtr = 0; lnCtr &lt; paAttachments.size(); lnCtr++) {</span>
+<span class="nc" id="L252">            TransactionAttachment loAttachment = paAttachments.get(lnCtr);</span>
+<span class="nc" id="L253">            loAttachment.getModel().setSourceNo(fsSourceNo);</span>
+<span class="nc" id="L254">            loAttachment.getModel().setSourceCode(psSourceCode);</span>
+<span class="nc" id="L255">            loAttachment.getModel().setBranchCode(fsBranchCode);</span>
+<span class="nc" id="L256">            loAttachment.getModel().setImagePath(getTempPath());</span>
+
+<span class="nc" id="L258">            String lsOriginalFileName = loAttachment.getModel().getFileName();</span>
+
+            //new file whose name is already used: copy it under the next free name
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            if (EditMode.ADDNEW == loAttachment.getModel().getEditMode()) {</span>
+<span class="nc" id="L262">                String lsNewFileName = nextFreeFileName(lsOriginalFileName);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">                if (!lsNewFileName.equals(lsOriginalFileName)) {</span>
+<span class="nc" id="L264">                    JSONObject loJSON = copyAs(lsOriginalFileName, lsNewFileName);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                    if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L266">                        return loJSON;</span>
+                    }
+<span class="nc" id="L268">                    loAttachment.getModel().setFileName(lsNewFileName);</span>
+                }
+            }
+
+            //upload when not yet sent
+<span class="nc bnc" id="L273" title="All 2 branches missed.">            if (&quot;0&quot;.equals(loAttachment.getModel().getSendStatus())) {</span>
+<span class="nc" id="L274">                JSONObject loJSON = upload(lnCtr, lsOriginalFileName);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L276">                    return loJSON;</span>
+                }
+            }
+        }
+<span class="nc" id="L280">        return success();</span>
+    }
+
+    /** Saves new and edited attachment records (inside the transaction's save). */
+    public JSONObject save() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        for (TransactionAttachment loAttachment : paAttachments) {</span>
+<span class="nc bnc" id="L286" title="All 4 branches missed.">            if (loAttachment.getEditMode() == EditMode.ADDNEW || loAttachment.getEditMode() == EditMode.UPDATE) {</span>
+<span class="nc" id="L287">                loAttachment.getModel().setModifyingId(poGRider.Encrypt(poGRider.getUserID()));</span>
+<span class="nc" id="L288">                loAttachment.getModel().setModifiedDate(poGRider.getServerDate());</span>
+<span class="nc" id="L289">                loAttachment.setWithParentClass(true);</span>
+<span class="nc" id="L290">                JSONObject loJSON = loAttachment.saveRecord();</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L292">                    return loJSON;</span>
+                }
+            }
+<span class="nc" id="L295">        }</span>
+<span class="nc" id="L296">        return success();</span>
+    }
+
+    /**
+     * Uploads one attachment. Uses the new file name when that file exists,
+     * otherwise the original one.
+     */
+    public JSONObject upload(int fnRow, String fsOriginalFileName) {
+<span class="nc" id="L304">        TransactionAttachment loAttachment = paAttachments.get(fnRow);</span>
+<span class="nc" id="L305">        String lsPath = loAttachment.getModel().getImagePath();</span>
+<span class="nc" id="L306">        String lsFile = loAttachment.getModel().getFileName();</span>
+
+<span class="nc" id="L308">        File loFile = new File(lsPath + &quot;/&quot; + lsFile);</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        if (!loFile.exists()) {</span>
+<span class="nc" id="L310">            lsFile = fsOriginalFileName;</span>
+<span class="nc" id="L311">            loFile = new File(lsPath + &quot;/&quot; + lsFile);</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">            if (!loFile.exists()) {</span>
+<span class="nc" id="L313">                return error(&quot;Cannot locate file in &quot; + lsPath + &quot;/&quot; + lsFile</span>
+                        + &quot;.\nContact system administrator for assistance.&quot;);
+            }
+        }
+
+        try {
+<span class="nc" id="L319">            String lsHash = loAttachment.getModel().getMD5Hash();</span>
+<span class="nc bnc" id="L320" title="All 4 branches missed.">            if (lsHash == null || lsHash.isEmpty()) {</span>
+<span class="nc" id="L321">                lsHash = MiscReplUtil.md5Hash(lsPath + &quot;/&quot; + lsFile);</span>
+            }
+
+<span class="nc" id="L324">            String lsToken = getAccessToken(getAccessTokenFile());</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">            if (lsToken == null) {</span>
+<span class="nc" id="L326">                return error(&quot;Unable to get an access token for uploading.\nContact system administrator for assistance.&quot;);</span>
+            }
+
+<span class="nc" id="L329">            JSONObject loResult = WebFile.UploadFile(lsToken,</span>
+                    WEB_FILE_SYSTEM, &quot;&quot;,
+<span class="nc" id="L331">                    loAttachment.getModel().getFileName(),</span>
+<span class="nc" id="L332">                    poGRider.getBranchCode(),</span>
+                    lsHash,
+<span class="nc" id="L334">                    encodeFileToBase64(loFile),</span>
+<span class="nc" id="L335">                    loAttachment.getModel().getSourceCode(),</span>
+<span class="nc" id="L336">                    loAttachment.getModel().getSourceNo(),</span>
+                    &quot;&quot;);
+
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if (&quot;error&quot;.equalsIgnoreCase((String) loResult.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L340">                Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Upload failed: {0}&quot;, loResult.toJSONString());</span>
+<span class="nc" id="L341">                return error(&quot;System error while uploading file &quot; + loAttachment.getModel().getFileName()</span>
+                        + &quot;.\nContact system administrator for assistance.&quot;);
+            }
+
+<span class="nc" id="L345">            loAttachment.getModel().setMD5Hash(lsHash);</span>
+<span class="nc" id="L346">            loAttachment.getModel().setSendStatus(&quot;1&quot;);</span>
+<span class="nc" id="L347">            return success();</span>
+<span class="nc" id="L348">        } catch (Exception ex) {</span>
+            //previously swallowed: the PO saved with the file marked unsent
+<span class="nc" id="L350">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="nc" id="L351">            return error(&quot;Unable to upload file &quot; + loAttachment.getModel().getFileName() + &quot;: &quot; + MiscUtil.getException(ex));</span>
+        }
+    }
+
+    // =====================================================================
+    // File names
+    // =====================================================================
+    /** Whether the file name is already used by a saved attachment. */
+    public boolean isFileNameUsed(String fsFileName) throws SQLException, GuanzonException {
+<span class="nc" id="L360">        return getUsedFileNames(fsFileName).contains(fsFileName);</span>
+    }
+
+    /**
+     * The file name, or &quot;name_1.ext&quot;, &quot;name_2.ext&quot;, ... when it is already
+     * used. One query instead of one per attempt.
+     */
+    public String nextFreeFileName(String fsFileName) throws SQLException, GuanzonException {
+<span class="nc" id="L368">        int lnDot = fsFileName.lastIndexOf('.');</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        String lsBase = lnDot == -1 ? fsFileName : fsFileName.substring(0, lnDot);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        String lsExt = lnDot == -1 ? &quot;&quot; : fsFileName.substring(lnDot);</span>
+
+<span class="nc" id="L372">        Set&lt;String&gt; loUsed = getUsedFileNames(lsBase);</span>
+<span class="nc" id="L373">        String lsName = fsFileName;</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        for (int lnCopy = 1; loUsed.contains(lsName); lnCopy++) {</span>
+<span class="nc" id="L375">            lsName = lsBase + &quot;_&quot; + lnCopy + lsExt;</span>
+        }
+<span class="nc" id="L377">        return lsName;</span>
+    }
+
+    private Set&lt;String&gt; getUsedFileNames(String fsPrefix) throws SQLException, GuanzonException {
+<span class="nc" id="L381">        String lsSQL = MiscUtil.addCondition(MiscUtil.makeSelect(newAttachment().getModel()),</span>
+<span class="nc" id="L382">                &quot; sFileName LIKE &quot; + SQLUtil.toSQL(fsPrefix + &quot;%&quot;));</span>
+<span class="nc" id="L383">        Set&lt;String&gt; loNames = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L384">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">        if (loRS == null) {</span>
+<span class="nc" id="L386">            return loNames;</span>
+        }
+        try {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">            while (loRS.next()) {</span>
+<span class="nc" id="L390">                String lsName = loRS.getString(&quot;sFileName&quot;);</span>
+<span class="nc bnc" id="L391" title="All 4 branches missed.">                if (lsName != null &amp;&amp; !lsName.isEmpty()) {</span>
+<span class="nc" id="L392">                    loNames.add(lsName);</span>
+                }
+<span class="nc" id="L394">            }</span>
+        } finally {
+<span class="nc" id="L396">            MiscUtil.close(loRS);</span>
+        }
+<span class="nc" id="L398">        return loNames;</span>
+    }
+
+    private JSONObject copyAs(String fsFileName, String fsNewFileName) {
+<span class="nc" id="L402">        Path loSource = Paths.get(getTempPath(), fsFileName);</span>
+<span class="nc" id="L403">        Path loTarget = Paths.get(getTempPath()).resolve(fsNewFileName);</span>
+        try {
+<span class="nc" id="L405">            Files.copy(loSource, loTarget, StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="nc" id="L406">            return success();</span>
+<span class="nc" id="L407">        } catch (IOException ex) {</span>
+<span class="nc" id="L408">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Unable to copy &quot; + loSource, ex);</span>
+<span class="nc" id="L409">            return error(&quot;Unable to copy attachment &quot; + fsFileName + &quot; as &quot; + fsNewFileName + &quot;.&quot;);</span>
+        }
+    }
+
+    private static String encodeFileToBase64(File foFile) throws IOException {
+<span class="nc" id="L414">        return new String(Base64.encodeBase64(Files.readAllBytes(foFile.toPath())), StandardCharsets.UTF_8);</span>
+    }
+
+    // =====================================================================
+    // Access token (shared by all instances; refreshed when 25 minutes old)
+    // =====================================================================
+<span class="fc" id="L420">    private static final Object TOKEN_LOCK = new Object();</span>
+<span class="fc" id="L421">    private static JSONObject poToken = null;</span>
+
+    /** Access key from the token file, refreshing it when expired. Null when unavailable. */
+    private static String getAccessToken(String fsTokenFile) {
+<span class="nc" id="L425">        synchronized (TOKEN_LOCK) {</span>
+            try {
+<span class="nc bnc" id="L427" title="All 2 branches missed.">                if (poToken == null) {</span>
+<span class="nc" id="L428">                    poToken = readToken(fsTokenFile);</span>
+                }
+
+<span class="nc" id="L431">                Calendar loLimit = Calendar.getInstance();</span>
+<span class="nc" id="L432">                loLimit.add(Calendar.MINUTE, -25);</span>
+<span class="nc" id="L433">                Calendar loCreated = Calendar.getInstance();</span>
+<span class="nc" id="L434">                loCreated.setTime(SQLUtil.toDate((String) poToken.get(&quot;created&quot;), SQLUtil.FORMAT_TIMESTAMP));</span>
+
+                //request a new access token when the current one is too old
+<span class="nc bnc" id="L437" title="All 2 branches missed.">                if (loLimit.after(loCreated)) {</span>
+<span class="nc" id="L438">                    RequestAccess.main(new String[]{(String) poToken.get(&quot;parent&quot;), fsTokenFile});</span>
+<span class="nc" id="L439">                    poToken = readToken(fsTokenFile);</span>
+                }
+<span class="nc" id="L441">                return (String) poToken.get(&quot;access_key&quot;);</span>
+<span class="nc" id="L442">            } catch (IOException | ParseException ex) {</span>
+<span class="nc" id="L443">                Logger.getLogger(PurchaseOrderAttachments.class.getName()).log(Level.SEVERE, &quot;Unable to read access token&quot;, ex);</span>
+<span class="nc" id="L444">                poToken = null;</span>
+<span class="nc" id="L445">                return null;</span>
+            }
+        }
+    }
+
+    private static JSONObject readToken(String fsTokenFile) throws IOException, ParseException {
+<span class="nc" id="L451">        try (Reader loReader = new FileReader(fsTokenFile)) {</span>
+<span class="nc" id="L452">            return (JSONObject) new JSONParser().parse(loReader);</span>
+        }
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

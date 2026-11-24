@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderScreens.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui</a> &gt; <span class="el_source">PurchaseOrderScreens.java</span></div><h1>PurchaseOrderScreens.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.ui;
+
+import java.util.Arrays;
+import java.util.List;
+import org.guanzon.appdriver.agent.screen.ScreenEntry;
+import org.guanzon.appdriver.agent.screen.ScreenProvider;
+
+/**
+ * The screens cas-po offers to cas-app.
+ *
+ * &lt;p&gt;
+ * Registered in
+ * {@code META-INF/services/org.guanzon.appdriver.agent.screen.ScreenProvider}.
+ * The menu keys are the integsys controllers the existing menu rows
+ * (xxxSysMenuOthers.sObjectNm) point to, so the same menu opens the old
+ * screens in integsys and the new ones in cas-app; the menu tables do not
+ * change.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * To move another menu item to cas-po, add its line here.&lt;/p&gt;
+ */
+<span class="nc" id="L22">public class PurchaseOrderScreens implements ScreenProvider {</span>
+
+    private static final String VIEWS = &quot;/ph/com/guanzongroup/cas/po/ui/&quot;;
+    private static final String INTEGSYS = &quot;ph.com.guanzongroup.integsys.views.&quot;;
+
+    @Override
+    public String getModule() {
+<span class="nc" id="L29">        return &quot;cas-po&quot;;</span>
+    }
+
+    @Override
+    public List&lt;ScreenEntry&gt; getScreens() {
+<span class="nc" id="L34">        return Arrays.asList(</span>
+<span class="nc" id="L35">                ScreenEntry.of(PurchaseOrderGeneral_EntryController.class,</span>
+                        VIEWS + &quot;PurchaseOrderGeneral_Entry.fxml&quot;,
+                        INTEGSYS + &quot;PurchaseOrder_EntryController&quot;),
+<span class="nc" id="L38">                ScreenEntry.of(PurchaseOrderGeneral_ConfirmationController.class,</span>
+                        VIEWS + &quot;PurchaseOrderGeneral_Confirmation.fxml&quot;,
+                        INTEGSYS + &quot;PurchaseOrder_ConfirmationController&quot;),
+<span class="nc" id="L41">                ScreenEntry.of(PurchaseOrderGeneral_HistoryController.class,</span>
+                        VIEWS + &quot;PurchaseOrderGeneral_History.fxml&quot;,
+                        INTEGSYS + &quot;PurchaseOrder_HistoryController&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,609 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderPrinter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderPrinter.java</span></div><h1>PurchaseOrderPrinter.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import static ph.com.guanzongroup.cas.po.utility.Results.error;
+import static ph.com.guanzongroup.cas.po.utility.Results.isSuccess;
+import static ph.com.guanzongroup.cas.po.utility.Results.success;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.event.ActionListener;
+import java.io.File;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javafx.application.Platform;
+import javax.swing.JButton;
+import javax.swing.SwingUtilities;
+import net.sf.jasperreports.engine.JRException;
+import net.sf.jasperreports.engine.JasperCompileManager;
+import net.sf.jasperreports.engine.JasperExportManager;
+import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperPrintManager;
+import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
+import net.sf.jasperreports.swing.JRViewer;
+import net.sf.jasperreports.swing.JRViewerToolbar;
+import net.sf.jasperreports.view.JasperViewer;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.constant.Logical;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import ph.com.guanzongroup.cas.po.utility.CustomJasperViewerReports;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+
+/**
+ * Printing for Purchase Order: the PO form and the summary/detailed reports.
+ *
+ * &lt;p&gt;
+ * Works with any {@link PurchaseOrder} controller. An industry that prints
+ * differently extends this class and overrides
+ * {@link #getPrintTemplatePath(String)} and/or
+ * {@link #buildPrintDescription(int, String)}, then returns it from its
+ * controller.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Compiled reports are cached per JRXML file (recompiled when the file
+ * changes), so printing no longer compiles the report every time.&lt;/p&gt;
+ */
+public class PurchaseOrderPrinter {
+
+    protected final PurchaseOrder poPO;
+    protected final GRiderCAS poGRider;
+    protected final PurchaseOrderAudit poAudit;
+
+<span class="fc" id="L63">    public PurchaseOrderPrinter(PurchaseOrder foPO, GRiderCAS foGRider, PurchaseOrderAudit foAudit) {</span>
+<span class="fc" id="L64">        poPO = foPO;</span>
+<span class="fc" id="L65">        poGRider = foGRider;</span>
+<span class="fc" id="L66">        poAudit = foAudit;</span>
+<span class="fc" id="L67">    }</span>
+
+    protected static String configPath() {
+<span class="nc" id="L70">        return System.getProperty(&quot;sys.default.path.config&quot;);</span>
+    }
+
+    protected static boolean isWindows() {
+<span class="nc" id="L74">        return System.getProperty(&quot;os.name&quot;).toLowerCase().contains(&quot;win&quot;);</span>
+    }
+
+    // =====================================================================
+    // Industry options
+    // =====================================================================
+    /** JRXML for the PO form; null when the template type is unknown. */
+    protected String getPrintTemplatePath(String jasperType) {
+<span class="nc" id="L82">        String lsPath = configPath() + &quot;/reports/&quot;;</span>
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        switch (jasperType) {</span>
+            case PurchaseOrderStaticData.Printing_CAR_MC_MPUnit_Appliance:
+<span class="nc" id="L85">                return lsPath + &quot;PurchaseOrderCarMcMPUnitAppliance.jrxml&quot;;</span>
+            case PurchaseOrderStaticData.Printing_CARSp_MCSp_General:
+<span class="nc" id="L87">                return lsPath + &quot;PurchaseOrderCARSpMCSpGeneral.jrxml&quot;;</span>
+            case PurchaseOrderStaticData.Printing_Pedritos:
+<span class="nc" id="L89">                return lsPath + &quot;PurchaseOrderPedritos.jrxml&quot;;</span>
+            default:
+<span class="nc" id="L91">                return null;</span>
+        }
+    }
+
+    /** Item description printed for one detail row. */
+    protected String buildPrintDescription(int fnRow, String jasperType) throws Exception {
+<span class="nc" id="L97">        Model_PO_Detail loDetail = poPO.Detail(fnRow);</span>
+<span class="nc" id="L98">        String lsDescription = text(loDetail.Inventory().getDescription());</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        switch (jasperType) {</span>
+            case PurchaseOrderStaticData.Printing_CARSp_MCSp_General:
+            case PurchaseOrderStaticData.Printing_Pedritos:
+<span class="nc" id="L102">                String lsFullDesc = join(text(loDetail.Inventory().Brand().getDescription()),</span>
+<span class="nc" id="L103">                        text(loDetail.Inventory().Model().getDescription()));</span>
+<span class="nc" id="L104">                return join(lsFullDesc, lsDescription);</span>
+            default:
+<span class="nc" id="L106">                return lsDescription;</span>
+        }
+    }
+
+    /** JRXML for the summary (true) or detailed (false) report. */
+    protected String getReportTemplatePath(boolean fbSummarized) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        return configPath() + (fbSummarized</span>
+                ? &quot;/reports/PurchaseOrderSummary.jrxml&quot;
+                : &quot;/reports/PurchaseOrderSummaryDetail.jrxml&quot;);
+    }
+
+    // =====================================================================
+    // PO form
+    // =====================================================================
+    public JSONObject printTransaction(String jasperType) {
+        try {
+<span class="nc" id="L122">            String lsTemplate = getPrintTemplatePath(jasperType);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">            if (lsTemplate == null) {</span>
+<span class="nc" id="L124">                return error(&quot;Unknown print template: &quot; + jasperType);</span>
+            }
+
+<span class="nc" id="L127">            Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc" id="L128">            Map&lt;String, Object&gt; laParams = new HashMap&lt;&gt;();</span>
+
+            //prepared by / confirmed by
+<span class="nc" id="L131">            laParams.put(&quot;sCompnyNm&quot;, &quot;&quot;);</span>
+<span class="nc" id="L132">            laParams.put(&quot;sConfirmed&quot;, &quot;&quot;);</span>
+<span class="nc" id="L133">            JSONObject loEntry = poAudit.getEntryBy(loMaster.getTable(), loMaster.getTransactionNo());</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            if (!text(loEntry.get(&quot;sCompnyNm&quot;)).isEmpty()) {</span>
+<span class="nc" id="L135">                laParams.put(&quot;sCompnyNm&quot;, &quot;Prepared by: &quot; + loEntry.get(&quot;sCompnyNm&quot;) + &quot; &quot; + text(loEntry.get(&quot;sEntryDte&quot;)));</span>
+            }
+<span class="nc" id="L137">            JSONObject loConfirm = poAudit.getConfirmedBy(loMaster.getTransactionNo());</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (!text(loConfirm.get(&quot;sConfirmed&quot;)).isEmpty()) {</span>
+<span class="nc" id="L139">                laParams.put(&quot;sConfirmed&quot;, &quot;Confirmed by: &quot; + loConfirm.get(&quot;sConfirmed&quot;) + &quot; &quot; + text(loConfirm.get(&quot;sConfrmDte&quot;)));</span>
+            }
+
+<span class="nc" id="L142">            laParams.put(&quot;sBranchNm&quot;, poGRider.getBranchName());</span>
+<span class="nc" id="L143">            laParams.put(&quot;sAddressx&quot;, address(loMaster.Company().getCompanyAddress(),</span>
+<span class="nc" id="L144">                    loMaster.Company().TownCity().getDescription(),</span>
+<span class="nc" id="L145">                    loMaster.Company().TownCity().Province().getDescription()));</span>
+<span class="nc" id="L146">            laParams.put(&quot;sTransNox&quot;, loMaster.getTransactionNo());</span>
+<span class="nc" id="L147">            laParams.put(&quot;sDestination&quot;, loMaster.Branch().getBranchName());</span>
+<span class="nc" id="L148">            laParams.put(&quot;sCompany&quot;, loMaster.Company().getCompanyName());</span>
+<span class="nc" id="L149">            laParams.put(&quot;sSupplier&quot;, loMaster.Supplier().getCompanyName());</span>
+<span class="nc" id="L150">            laParams.put(&quot;sTerm&quot;, loMaster.Term().getDescription());</span>
+<span class="nc" id="L151">            laParams.put(&quot;sDestinationAddress&quot;, address(loMaster.Branch().getAddress(),</span>
+<span class="nc" id="L152">                    loMaster.Branch().TownCity().getDescription(),</span>
+<span class="nc" id="L153">                    loMaster.Branch().TownCity().Province().getDescription()));</span>
+
+            //approvers (filled only when approved)
+<span class="nc" id="L156">            laParams.put(&quot;sApprval1&quot;, &quot;&quot;);</span>
+<span class="nc" id="L157">            laParams.put(&quot;sApprval2&quot;, &quot;&quot;);</span>
+<span class="nc" id="L158">            laParams.put(&quot;sApprval3&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">            if (PurchaseOrderStatus.APPROVED.equals(loMaster.getTransactionStatus())) {</span>
+<span class="nc" id="L160">                List&lt;String&gt; laApprovers = poAudit.getApprovers(loMaster.getTransactionNo());</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                for (int lnCtr = 0; lnCtr &lt; laApprovers.size(); lnCtr++) {</span>
+<span class="nc" id="L162">                    laParams.put(&quot;sApprval&quot; + (lnCtr + 1), laApprovers.get(lnCtr));</span>
+                }
+            }
+
+<span class="nc" id="L166">            laParams.put(&quot;sRemarks&quot;, loMaster.getRemarks());</span>
+<span class="nc" id="L167">            laParams.put(&quot;dTransDte&quot;, new java.sql.Date(loMaster.getTransactionDate().getTime()));</span>
+<span class="nc" id="L168">            laParams.put(&quot;dDatexxx&quot;, new java.sql.Date(poGRider.getServerDate().getTime()));</span>
+<span class="nc" id="L169">            laParams.put(&quot;nTtlAmntx&quot;, loMaster.getTranTotal().doubleValue());</span>
+<span class="nc" id="L170">            laParams.put(&quot;nDiscRate&quot;, loMaster.getDiscount().doubleValue());</span>
+<span class="nc" id="L171">            laParams.put(&quot;nDiscAmnt&quot;, loMaster.getAdditionalDiscount().doubleValue());</span>
+<span class="nc" id="L172">            laParams.put(&quot;nAdvAmntx&quot;, loMaster.getDownPaymentRatesAmount().doubleValue());</span>
+<span class="nc" id="L173">            laParams.put(&quot;nAdvRatex&quot;, loMaster.getDownPaymentRatesPercentage().doubleValue());</span>
+<span class="nc" id="L174">            laParams.put(&quot;nNetAmntx&quot;, loMaster.getNetTotal().doubleValue());</span>
+<span class="nc" id="L175">            laParams.put(&quot;watermarkImagePath&quot;, getWatermarkPath(loMaster));</span>
+
+<span class="nc" id="L177">            List&lt;OrderDetail&gt; laRows = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            for (int lnCtr = 0; lnCtr &lt; poPO.getDetailCount(); lnCtr++) {</span>
+<span class="nc" id="L179">                Model_PO_Detail loDetail = poPO.Detail(lnCtr);</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                double lnPrice = loDetail.getUnitPrice() != null ? loDetail.getUnitPrice().doubleValue() : 0.00;</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                double lnQty = loDetail.getQuantity() != null ? loDetail.getQuantity().doubleValue() : 0.00;</span>
+<span class="nc" id="L182">                laRows.add(new OrderDetail(lnCtr + 1,</span>
+<span class="nc" id="L183">                        text(loDetail.getSouceNo()),</span>
+<span class="nc" id="L184">                        text(loDetail.Inventory().getBarCode()),</span>
+<span class="nc" id="L185">                        text(loDetail.Inventory().Brand().getDescription()),</span>
+<span class="nc" id="L186">                        text(loDetail.Inventory().Variant().getDescription()) + &quot; &quot;</span>
+<span class="nc" id="L187">                        + text(loDetail.Inventory().Variant().getYearModel()),</span>
+<span class="nc" id="L188">                        text(loDetail.Inventory().Model().getDescription()),</span>
+<span class="nc" id="L189">                        text(loDetail.Inventory().Measure().getDescription()),</span>
+<span class="nc" id="L190">                        text(loDetail.Inventory().Color().getDescription()),</span>
+<span class="nc" id="L191">                        buildPrintDescription(lnCtr, jasperType),</span>
+                        lnPrice,
+                        lnQty,
+                        lnPrice * lnQty));
+            }
+
+<span class="nc" id="L197">            JasperPrint loPrint = JasperFillManager.fillReport(compile(lsTemplate), laParams,</span>
+                    new JRBeanCollectionDataSource(laRows));
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (isWindows()) {</span>
+<span class="nc" id="L201">                new PrintViewer(loPrint).setVisible(true);</span>
+            } else {
+                //not Windows: export a PDF instead of opening the viewer
+<span class="nc" id="L204">                JasperExportManager.exportReportToPdfFile(loPrint, configPath() + &quot;/temp/&quot; + loMaster.getTransactionNo() + &quot;.pdf&quot;);</span>
+            }
+<span class="nc" id="L206">            return success();</span>
+<span class="nc" id="L207">        } catch (Exception ex) {</span>
+<span class="nc" id="L208">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Transaction print aborted&quot;, ex);</span>
+<span class="nc" id="L209">            return error(&quot;Transaction print aborted!&quot;);</span>
+        }
+    }
+
+    /** Draft by default; approved / approved-reprint for approved or posted POs. */
+    protected String getWatermarkPath(Model_PO_Master foMaster) {
+<span class="nc" id="L215">        String lsImages = configPath() + &quot;/reports/images/&quot;;</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        switch (foMaster.getTransactionStatus()) {</span>
+            case PurchaseOrderStatus.POSTED:
+            case PurchaseOrderStatus.APPROVED:
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                return lsImages + (&quot;1&quot;.equals(foMaster.getPrint()) ? &quot;approvedreprint.png&quot; : &quot;approved.png&quot;);</span>
+            default:
+<span class="nc" id="L221">                return lsImages + &quot;draft.png&quot;;</span>
+        }
+    }
+
+    // =====================================================================
+    // Reports
+    // =====================================================================
+    /**
+     * Prints the summary (fbSummarized) or detailed report from the rows of
+     * RetrieveSummaryReports / RetrieveSummaryDetailedReports.
+     *
+     * @param fsDateFrom date range shown in the header (yyyy-M-d), may be empty
+     * @param fsDateThru date range shown in the header (yyyy-M-d), may be empty
+     */
+    public JSONObject printReports(boolean fbSummarized, JSONArray faData, String fsDateFrom, String fsDateThru) {
+        try {
+<span class="nc" id="L237">            Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc" id="L238">            Map&lt;String, Object&gt; laParams = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L239">            laParams.put(&quot;sLogCompny&quot;, poGRider.getCompnyId());</span>
+<span class="nc" id="L240">            laParams.put(&quot;sAddressx&quot;, address(loMaster.Company().getCompanyAddress(),</span>
+<span class="nc" id="L241">                    loMaster.Company().TownCity().getDescription(),</span>
+<span class="nc" id="L242">                    loMaster.Company().TownCity().Province().getDescription()));</span>
+<span class="nc" id="L243">            laParams.put(&quot;sCompany&quot;, loMaster.Company().getCompanyName());</span>
+<span class="nc" id="L244">            laParams.put(&quot;sIndustry&quot;, loMaster.Industry().getDescription());</span>
+<span class="nc" id="L245">            laParams.put(&quot;sBranch&quot;, loMaster.Branchx().getBranchName());</span>
+<span class="nc" id="L246">            laParams.put(&quot;sDateRange&quot;, &quot;FROM &quot; + formatDateToText(fsDateFrom) + &quot; TO &quot; + formatDateToText(fsDateThru));</span>
+
+<span class="nc" id="L248">            List&lt;Reports&gt; laRows = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">            for (int lnCtr = 0; lnCtr &lt; faData.size(); lnCtr++) {</span>
+<span class="nc" id="L250">                JSONObject loRow = (JSONObject) faData.get(lnCtr);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                if (fbSummarized) {</span>
+<span class="nc" id="L252">                    laRows.add(new Reports(lnCtr + 1,</span>
+<span class="nc" id="L253">                            text(loRow.get(&quot;Supplier&quot;)),</span>
+<span class="nc" id="L254">                            text(loRow.get(&quot;Destination&quot;)),</span>
+<span class="nc" id="L255">                            text(loRow.get(&quot;Branch&quot;)),</span>
+<span class="nc" id="L256">                            text(loRow.get(&quot;sTransNox&quot;)),</span>
+<span class="nc" id="L257">                            text(loRow.get(&quot;sReferNox&quot;)),</span>
+<span class="nc" id="L258">                            (java.sql.Date) loRow.get(&quot;dTransact&quot;),</span>
+<span class="nc" id="L259">                            text(loRow.get(&quot;Category&quot;)),</span>
+<span class="nc" id="L260">                            text(loRow.get(&quot;Term&quot;)),</span>
+<span class="nc" id="L261">                            text(loRow.get(&quot;cTranStat&quot;)),</span>
+<span class="nc" id="L262">                            number(loRow.get(&quot;Total&quot;))));</span>
+                } else {
+<span class="nc" id="L264">                    laRows.add(new Reports(lnCtr + 1,</span>
+<span class="nc" id="L265">                            text(loRow.get(&quot;Supplier&quot;)),</span>
+<span class="nc" id="L266">                            text(loRow.get(&quot;Destination&quot;)),</span>
+<span class="nc" id="L267">                            text(loRow.get(&quot;sTransNox&quot;)),</span>
+<span class="nc" id="L268">                            (java.sql.Date) loRow.get(&quot;dTransact&quot;),</span>
+<span class="nc" id="L269">                            text(loRow.get(&quot;sBarCodex&quot;)),</span>
+<span class="nc" id="L270">                            text(loRow.get(&quot;Description&quot;)),</span>
+<span class="nc" id="L271">                            text(loRow.get(&quot;Brand&quot;)),</span>
+<span class="nc" id="L272">                            text(loRow.get(&quot;ModelCode&quot;)),</span>
+<span class="nc" id="L273">                            text(loRow.get(&quot;ModelName&quot;)),</span>
+<span class="nc" id="L274">                            text(loRow.get(&quot;Color&quot;)),</span>
+<span class="nc" id="L275">                            number(loRow.get(&quot;Quantity&quot;)),</span>
+<span class="nc" id="L276">                            number(loRow.get(&quot;nReceived&quot;)),</span>
+<span class="nc" id="L277">                            number(loRow.get(&quot;nCancelld&quot;)),</span>
+<span class="nc" id="L278">                            number(loRow.get(&quot;UnitPrice&quot;)),</span>
+<span class="nc" id="L279">                            number(loRow.get(&quot;Total&quot;))));</span>
+                }
+            }
+
+<span class="nc" id="L283">            JasperPrint loPrint = JasperFillManager.fillReport(compile(getReportTemplatePath(fbSummarized)), laParams,</span>
+                    new JRBeanCollectionDataSource(laRows));
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">            if (isWindows()) {</span>
+<span class="nc" id="L287">                CustomJasperViewerReports.show(loPrint, &quot;Purchase Order Reports&quot;);</span>
+            } else {
+                //not Windows: export a PDF instead of opening the viewer
+<span class="nc" id="L290">                JasperExportManager.exportReportToPdfFile(loPrint, configPath() + &quot;/temp/&quot; + loMaster.getTransactionNo() + &quot;.pdf&quot;);</span>
+            }
+<span class="nc" id="L292">            return success();</span>
+<span class="nc" id="L293">        } catch (Exception ex) {</span>
+<span class="nc" id="L294">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Report print aborted&quot;, ex);</span>
+<span class="nc" id="L295">            return error(&quot;Report print aborted: &quot; + ex.getMessage());</span>
+        }
+    }
+
+    /** &quot;2026-1-5&quot; to &quot;January 05, 2026&quot;; empty when blank. */
+    public static String formatDateToText(String fsDate) {
+<span class="pc bpc" id="L301" title="3 of 6 branches missed.">        if (fsDate == null || fsDate.isEmpty() || &quot;null&quot;.equals(fsDate)) {</span>
+<span class="nc" id="L302">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L304">        LocalDate ldDate = LocalDate.parse(fsDate, DateTimeFormatter.ofPattern(&quot;yyyy-M-d&quot;));</span>
+<span class="fc" id="L305">        return ldDate.format(DateTimeFormatter.ofPattern(&quot;MMMM dd, yyyy&quot;));</span>
+    }
+
+    // =====================================================================
+    // Compiled report cache
+    // =====================================================================
+    private static final class CachedReport {
+
+        final long lastModified;
+        final JasperReport report;
+
+<span class="nc" id="L316">        CachedReport(long lastModified, JasperReport report) {</span>
+<span class="nc" id="L317">            this.lastModified = lastModified;</span>
+<span class="nc" id="L318">            this.report = report;</span>
+<span class="nc" id="L319">        }</span>
+    }
+
+<span class="fc" id="L322">    private static final Map&lt;String, CachedReport&gt; REPORTS = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /** Compiled report for the JRXML, compiled again only when the file changed. */
+    protected static JasperReport compile(String fsJrxml) throws JRException {
+<span class="nc" id="L326">        long lnModified = new File(fsJrxml).lastModified();</span>
+<span class="nc" id="L327">        CachedReport loCached = REPORTS.get(fsJrxml);</span>
+<span class="nc bnc" id="L328" title="All 4 branches missed.">        if (loCached == null || loCached.lastModified != lnModified) {</span>
+<span class="nc" id="L329">            loCached = new CachedReport(lnModified, JasperCompileManager.compileReport(fsJrxml));</span>
+<span class="nc" id="L330">            REPORTS.put(fsJrxml, loCached);</span>
+        }
+<span class="nc" id="L332">        return loCached.report;</span>
+    }
+
+    // =====================================================================
+    // Viewer whose Print button marks an approved PO as printed
+    // =====================================================================
+    public class PrintViewer extends JasperViewer {
+
+<span class="nc" id="L340">        public PrintViewer(JasperPrint foPrint) {</span>
+<span class="nc" id="L341">            super(foPrint, false);</span>
+<span class="nc" id="L342">            replacePrintButton(foPrint);</span>
+<span class="nc" id="L343">        }</span>
+
+        private void replacePrintButton(JasperPrint foPrint) {
+<span class="nc" id="L346">            JRViewer loViewer = findJRViewer(this);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            if (loViewer == null) {</span>
+<span class="nc" id="L348">                Logger.getLogger(PurchaseOrderPrinter.class.getName()).warning(&quot;JRViewer not found.&quot;);</span>
+<span class="nc" id="L349">                return;</span>
+            }
+
+<span class="nc bnc" id="L352" title="All 2 branches missed.">            for (Component loPart : loViewer.getComponents()) {</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                if (!(loPart instanceof JRViewerToolbar)) {</span>
+<span class="nc" id="L354">                    continue;</span>
+                }
+<span class="nc" id="L356">                JRViewerToolbar loToolbar = (JRViewerToolbar) loPart;</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                for (Component loTool : loToolbar.getComponents()) {</span>
+<span class="nc bnc" id="L358" title="All 4 branches missed.">                    if (loTool instanceof JButton &amp;&amp; &quot;Print&quot;.equals(((JButton) loTool).getToolTipText())) {</span>
+<span class="nc" id="L359">                        JButton loButton = (JButton) loTool;</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">                        for (ActionListener loListener : loButton.getActionListeners()) {</span>
+<span class="nc" id="L361">                            loButton.removeActionListener(loListener);</span>
+                        }
+<span class="nc" id="L363">                        loButton.addActionListener(e -&gt; onPrint(foPrint));</span>
+                    }
+                }
+<span class="nc" id="L366">                loToolbar.revalidate();</span>
+<span class="nc" id="L367">                loToolbar.repaint();</span>
+            }
+<span class="nc" id="L369">        }</span>
+
+        private void onPrint(JasperPrint foPrint) {
+            try {
+<span class="nc bnc" id="L373" title="All 2 branches missed.">                if (JasperPrintManager.printReport(foPrint, true)) {</span>
+<span class="nc" id="L374">                    markPrinted();</span>
+                } else {
+<span class="nc" id="L376">                    message(false, &quot;Printing was canceled by the user.&quot;);</span>
+                }
+<span class="nc" id="L378">            } catch (JRException ex) {</span>
+<span class="nc" id="L379">                message(false, &quot;Print Failed: &quot; + ex.getMessage());</span>
+<span class="nc" id="L380">            } catch (Exception ex) {</span>
+<span class="nc" id="L381">                Logger.getLogger(PurchaseOrderPrinter.class.getName()).log(Level.SEVERE, null, ex);</span>
+<span class="nc" id="L382">                message(false, &quot;Printing aborted.&quot;);</span>
+<span class="nc" id="L383">            }</span>
+<span class="nc" id="L384">        }</span>
+
+        /** An approved PO is flagged printed (so reprints get the reprint watermark). */
+        private void markPrinted() throws Exception {
+<span class="nc" id="L388">            Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">            if (PurchaseOrderStatus.APPROVED.equals(loMaster.getValue(&quot;cTranStat&quot;))) {</span>
+<span class="nc" id="L390">                JSONObject loJSON = poPO.OpenTransaction((String) loMaster.getValue(&quot;sTransNox&quot;));</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">                if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L392">                    loJSON = poPO.UpdateTransaction();</span>
+                }
+<span class="nc bnc" id="L394" title="All 2 branches missed.">                if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L395">                    poPO.Master().setValue(&quot;dModified&quot;, poGRider.getServerDate());</span>
+<span class="nc" id="L396">                    poPO.Master().setValue(&quot;sModified&quot;, poGRider.getUserID());</span>
+<span class="nc" id="L397">                    poPO.Master().setValue(&quot;cPrintxxx&quot;, Logical.YES);</span>
+<span class="nc" id="L398">                    loJSON = poPO.SaveTransaction();</span>
+                }
+<span class="nc bnc" id="L400" title="All 2 branches missed.">                if (!isSuccess(loJSON)) {</span>
+<span class="nc" id="L401">                    message(false, text(loJSON.get(&quot;message&quot;)));</span>
+<span class="nc" id="L402">                    return;</span>
+                }
+            }
+<span class="nc" id="L405">            message(true, &quot;Transaction printed successfully.&quot;);</span>
+<span class="nc" id="L406">        }</span>
+
+        private void message(boolean fbInfo, String fsMessage) {
+<span class="nc" id="L409">            Platform.runLater(() -&gt; {</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">                if (fbInfo) {</span>
+<span class="nc" id="L411">                    poPO.prompt().information(fsMessage, &quot;Print Purchase Order&quot;);</span>
+                } else {
+<span class="nc" id="L413">                    poPO.prompt().warning(fsMessage, &quot;Print Purchase Order&quot;);</span>
+                }
+<span class="nc" id="L415">                SwingUtilities.invokeLater(PrintViewer.this::toFront);</span>
+<span class="nc" id="L416">            });</span>
+<span class="nc" id="L417">        }</span>
+
+        private JRViewer findJRViewer(Component foParent) {
+<span class="nc bnc" id="L420" title="All 2 branches missed.">            if (foParent instanceof JRViewer) {</span>
+<span class="nc" id="L421">                return (JRViewer) foParent;</span>
+            }
+<span class="nc bnc" id="L423" title="All 2 branches missed.">            if (foParent instanceof Container) {</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">                for (Component loChild : ((Container) foParent).getComponents()) {</span>
+<span class="nc" id="L425">                    JRViewer loViewer = findJRViewer(loChild);</span>
+<span class="nc bnc" id="L426" title="All 2 branches missed.">                    if (loViewer != null) {</span>
+<span class="nc" id="L427">                        return loViewer;</span>
+                    }
+                }
+            }
+<span class="nc" id="L431">            return null;</span>
+        }
+    }
+
+    // =====================================================================
+    // Report rows (bean properties read by the JRXML files)
+    // =====================================================================
+    public static class OrderDetail {
+
+        private final Integer nRowNo;
+        private final String sOrderNo;
+        private final String sBarcode;
+        private final String sBrandName;
+        private final String sVariant;
+        private final String sModel;
+        private final String sMeasure;
+        private final String sColor;
+        private final String sDescription;
+        private final double nUprice;
+        private final double nOrder;
+        private final double nTotal;
+
+        public OrderDetail(Integer rowNo, String orderNo, String barcode, String brandName, String variant, String model,
+<span class="nc" id="L454">                String measure, String color, String description, double uprice, double order, double total) {</span>
+<span class="nc" id="L455">            this.nRowNo = rowNo;</span>
+<span class="nc" id="L456">            this.sOrderNo = orderNo;</span>
+<span class="nc" id="L457">            this.sBarcode = barcode;</span>
+<span class="nc" id="L458">            this.sBrandName = brandName;</span>
+<span class="nc" id="L459">            this.sVariant = variant;</span>
+<span class="nc" id="L460">            this.sModel = model;</span>
+<span class="nc" id="L461">            this.sMeasure = measure;</span>
+<span class="nc" id="L462">            this.sColor = color;</span>
+<span class="nc" id="L463">            this.sDescription = description;</span>
+<span class="nc" id="L464">            this.nUprice = uprice;</span>
+<span class="nc" id="L465">            this.nOrder = order;</span>
+<span class="nc" id="L466">            this.nTotal = total;</span>
+<span class="nc" id="L467">        }</span>
+
+<span class="nc" id="L469">        public Integer getnRowNo() { return nRowNo; }</span>
+<span class="nc" id="L470">        public String getsOrderNo() { return sOrderNo; }</span>
+<span class="nc" id="L471">        public String getsBarcode() { return sBarcode; }</span>
+<span class="nc" id="L472">        public String getsBrandName() { return sBrandName; }</span>
+<span class="nc" id="L473">        public String getsVariant() { return sVariant; }</span>
+<span class="nc" id="L474">        public String getsModel() { return sModel; }</span>
+<span class="nc" id="L475">        public String getsMeasure() { return sMeasure; }</span>
+<span class="nc" id="L476">        public String getsColor() { return sColor; }</span>
+<span class="nc" id="L477">        public String getsDescription() { return sDescription; }</span>
+<span class="nc" id="L478">        public double getnUprice() { return nUprice; }</span>
+<span class="nc" id="L479">        public double getnOrder() { return nOrder; }</span>
+<span class="nc" id="L480">        public double getnTotal() { return nTotal; }</span>
+        //kept for templates that reference them; never filled per line
+<span class="nc" id="L482">        public double getnDiscRate() { return 0; }</span>
+<span class="nc" id="L483">        public double getnDiscAmt() { return 0; }</span>
+<span class="nc" id="L484">        public double getnAdvRate() { return 0; }</span>
+<span class="nc" id="L485">        public double getnAdvAmt() { return 0; }</span>
+<span class="nc" id="L486">        public double getnNetAmt() { return 0; }</span>
+    }
+
+    public static class Reports {
+
+        private Integer nRowNo;
+        private String sSupplier;
+        private String sDestination;
+        private String sPONo;
+        private java.sql.Date dTransact;
+        private String sBarCodex;
+        private String sDescript;
+        private String sBrand;
+        private String sModelCode;
+        private String sModelName;
+        private String sColor;
+        private double nQty;
+        private double nReceived;
+        private double nCancelld;
+        private double nUnitPrice;
+        private double nTotal;
+        private String sBranch;
+        private String sCategory;
+        private String sTerm;
+        private String sReferNo;
+        private String cTranStat;
+
+        /** Detailed report row. */
+        public Reports(Integer nrowNo, String sSupplier, String sDestination, String sPONo, java.sql.Date dTransact,
+                String sBarCodex, String sDescript, String sBrand, String sModelCode, String sModelName, String sColor,
+<span class="nc" id="L516">                double nQty, double nReceived, double nCancelld, double nUnitPrice, double nTotal) {</span>
+<span class="nc" id="L517">            this.nRowNo = nrowNo;</span>
+<span class="nc" id="L518">            this.sSupplier = sSupplier;</span>
+<span class="nc" id="L519">            this.sDestination = sDestination;</span>
+<span class="nc" id="L520">            this.sPONo = sPONo;</span>
+<span class="nc" id="L521">            this.dTransact = dTransact;</span>
+<span class="nc" id="L522">            this.sBarCodex = sBarCodex;</span>
+<span class="nc" id="L523">            this.sDescript = sDescript;</span>
+<span class="nc" id="L524">            this.sBrand = sBrand;</span>
+<span class="nc" id="L525">            this.sModelCode = sModelCode;</span>
+<span class="nc" id="L526">            this.sModelName = sModelName;</span>
+<span class="nc" id="L527">            this.sColor = sColor;</span>
+<span class="nc" id="L528">            this.nQty = nQty;</span>
+<span class="nc" id="L529">            this.nReceived = nReceived;</span>
+<span class="nc" id="L530">            this.nCancelld = nCancelld;</span>
+<span class="nc" id="L531">            this.nUnitPrice = nUnitPrice;</span>
+<span class="nc" id="L532">            this.nTotal = nTotal;</span>
+<span class="nc" id="L533">        }</span>
+
+        /** Summary report row. */
+        public Reports(Integer nrowNo, String sSupplier, String sDestination, String sBranch, String sPONo, String sReferNo,
+<span class="nc" id="L537">                java.sql.Date dTransact, String sCategory, String sTerm, String cTranStat, double nTotal) {</span>
+<span class="nc" id="L538">            this.nRowNo = nrowNo;</span>
+<span class="nc" id="L539">            this.sSupplier = sSupplier;</span>
+<span class="nc" id="L540">            this.sDestination = sDestination;</span>
+<span class="nc" id="L541">            this.sBranch = sBranch;</span>
+<span class="nc" id="L542">            this.sPONo = sPONo;</span>
+<span class="nc" id="L543">            this.sReferNo = sReferNo;</span>
+<span class="nc" id="L544">            this.dTransact = dTransact;</span>
+<span class="nc" id="L545">            this.sCategory = sCategory;</span>
+<span class="nc" id="L546">            this.sTerm = sTerm;</span>
+<span class="nc" id="L547">            this.cTranStat = cTranStat;</span>
+<span class="nc" id="L548">            this.nTotal = nTotal;</span>
+<span class="nc" id="L549">        }</span>
+
+<span class="nc" id="L551">        public Integer getnRowNo() { return nRowNo; }</span>
+<span class="nc" id="L552">        public String getsSupplier() { return sSupplier; }</span>
+<span class="nc" id="L553">        public String getsDestination() { return sDestination; }</span>
+<span class="nc" id="L554">        public String getsPONo() { return sPONo; }</span>
+<span class="nc" id="L555">        public java.sql.Date getdTransact() { return dTransact; }</span>
+<span class="nc" id="L556">        public String getsBarCodex() { return sBarCodex; }</span>
+<span class="nc" id="L557">        public String getsDescript() { return sDescript; }</span>
+<span class="nc" id="L558">        public String getsBrand() { return sBrand; }</span>
+<span class="nc" id="L559">        public String getsModelCode() { return sModelCode; }</span>
+<span class="nc" id="L560">        public String getsModelName() { return sModelName; }</span>
+<span class="nc" id="L561">        public String getsColor() { return sColor; }</span>
+<span class="nc" id="L562">        public double getnQty() { return nQty; }</span>
+<span class="nc" id="L563">        public double getnReceived() { return nReceived; }</span>
+<span class="nc" id="L564">        public double getnCancelld() { return nCancelld; }</span>
+<span class="nc" id="L565">        public double getnUnitPrice() { return nUnitPrice; }</span>
+<span class="nc" id="L566">        public double getnTotal() { return nTotal; }</span>
+<span class="nc" id="L567">        public String getsBranch() { return sBranch; }</span>
+<span class="nc" id="L568">        public String getsCategory() { return sCategory; }</span>
+<span class="nc" id="L569">        public String getsTerm() { return sTerm; }</span>
+<span class="nc" id="L570">        public String getsReferNo() { return sReferNo; }</span>
+<span class="nc" id="L571">        public String getcTranStat() { return cTranStat; }</span>
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+    protected static String text(Object foValue) {
+<span class="nc bnc" id="L578" title="All 2 branches missed.">        return foValue == null ? &quot;&quot; : foValue.toString();</span>
+    }
+
+    protected static double number(Object foValue) {
+        try {
+<span class="nc bnc" id="L583" title="All 2 branches missed.">            return foValue == null ? 0.0000 : Double.parseDouble(foValue.toString());</span>
+<span class="nc" id="L584">        } catch (NumberFormatException ex) {</span>
+<span class="nc" id="L585">            return 0.0000;</span>
+        }
+    }
+
+    protected static String join(String fsLeft, String fsRight) {
+<span class="nc bnc" id="L590" title="All 2 branches missed.">        if (fsLeft.isEmpty()) {</span>
+<span class="nc" id="L591">            return fsRight;</span>
+        }
+<span class="nc bnc" id="L593" title="All 2 branches missed.">        return fsRight.isEmpty() ? fsLeft : fsLeft + &quot; &quot; + fsRight;</span>
+    }
+
+    /** &quot;street town, province&quot; without empty parts. */
+    protected static String address(String fsStreet, String fsTown, String fsProvince) {
+<span class="nc" id="L598">        String lsAddress = text(fsStreet).trim();</span>
+<span class="nc bnc" id="L599" title="All 2 branches missed.">        if (!text(fsTown).trim().isEmpty()) {</span>
+<span class="nc" id="L600">            lsAddress = join(lsAddress, fsTown.trim());</span>
+        }
+<span class="nc bnc" id="L602" title="All 2 branches missed.">        if (!text(fsProvince).trim().isEmpty()) {</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">            lsAddress = lsAddress.isEmpty() ? fsProvince.trim() : lsAddress + &quot;, &quot; + fsProvince.trim();</span>
+        }
+<span class="nc" id="L605">        return lsAddress;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

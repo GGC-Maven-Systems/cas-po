@@ -1,0 +1,759 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderGeneral.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderGeneral.java</span></div><h1>PurchaseOrderGeneral.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.sql.rowset.CachedRowSet;
+import org.guanzon.appdriver.agent.services.Model;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.base.SQLUtil;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.appdriver.constant.RecordStatus;
+import org.guanzon.appdriver.constant.UserRight;
+import org.guanzon.cas.inv.warehouse.model.Model_Inv_Stock_Request_Master;
+import org.guanzon.cas.inv.warehouse.services.InvWarehouseControllers;
+import org.guanzon.cas.parameter.model.Model_Project;
+import org.guanzon.cas.parameter.services.ParamModels;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.services.PurchaseOrderModels;
+import ph.com.guanzongroup.cas.poqt.services.QuotationControllers;
+import ph.com.guanzongroup.cas.po.status.POStatus;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import ph.com.guanzongroup.cas.po.validator.PurchaseOrderValidator;
+import ph.com.guanzongroup.cas.po.validator.PurchaseOrder_General;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
+import ph.com.guanzongroup.cas.cashflow.services.CashflowControllers;
+
+/**
+ * Purchase Order controller for General Inventory.
+ *
+ * &lt;p&gt;
+ * {@link PurchaseOrder} runs the main procedures
+ * (Init/New/Open/Update/Save/Confirm/Approve/Cancel); this class plugs the
+ * General Inventory work into them through the hooks and adds the rest:
+ * Post/Void/Return, lists, discounts, status history, reports and the
+ * engineering project title.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The work itself is in helper classes that any industry controller can reuse
+ * (override the matching create... method to change one):&lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link PurchaseOrderSourceDocuments}: stock requests and PO quotations&lt;/li&gt;
+ * &lt;li&gt;{@link PurchaseOrderAdvancePayment}: payment request for the advance&lt;/li&gt;
+ * &lt;li&gt;{@link PurchaseOrderSearch}: lookups that fill the PO&lt;/li&gt;
+ * &lt;li&gt;{@link PurchaseOrderAttachments}, {@link PurchaseOrderAudit},
+ * {@link PurchaseOrderPrinter}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * Rules are in {@link PurchaseOrder_General}. The public methods are the same
+ * as before, so the screens do not change.&lt;/p&gt;
+ */
+<span class="fc" id="L59">public class PurchaseOrderGeneral extends PurchaseOrder {</span>
+
+<span class="fc" id="L61">    private static final Logger LOG = Logger.getLogger(PurchaseOrderGeneral.class.getName());</span>
+
+    /** Purchase orders loaded by getPurchaseOrder / getConfirmedPurchaseOrder. */
+<span class="fc" id="L64">    private List&lt;Model_PO_Master&gt; paPOMaster = new ArrayList&lt;&gt;();</span>
+    /** Date range of the last report query, shown on the printed report. */
+    private String psReportDateFrom;
+    private String psReportDateThru;
+
+    private PurchaseOrderSourceDocuments poSourceDocuments;
+    private PurchaseOrderAdvancePayment poAdvancePayment;
+    private PurchaseOrderPrinter poPrinter;
+
+    /** Engineering project referenced by the PO. */
+    private Model_Project poProject;
+    /** Set when a Cancel/Void prepared the project; saved inside the transaction. */
+<span class="fc" id="L76">    private boolean pbProjectPrepared = false;</span>
+
+    // =====================================================================
+    // Main hooks
+    // =====================================================================
+    @Override
+    protected PurchaseOrderValidator createValidator() {
+<span class="fc" id="L83">        return new PurchaseOrder_General();</span>
+    }
+
+    /** General Inventory validator (gives access to the project title rule). */
+    protected PurchaseOrder_General generalRules(String fsStatus) {
+<span class="fc" id="L88">        return (PurchaseOrder_General) rules(fsStatus);</span>
+    }
+
+    @Override
+    protected void initOthers() {
+<span class="fc" id="L93">        SourceDocuments().reset();</span>
+<span class="fc" id="L94">    }</span>
+
+    /** Stock requests / quotations loaded for the previous PO are dropped. */
+    @Override
+    protected void resetOthers() {
+<span class="fc" id="L99">        SourceDocuments().reset();</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Before the status-change transaction: check and load the source
+     * documents; build the payment request (APPROVED); untag the engineering
+     * project when no other PO uses it (CANCELLED / VOID).
+     */
+    @Override
+    protected JSONObject prepareStatusChange(String fsStatus)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L110">        pbProjectPrepared = false;</span>
+
+<span class="fc" id="L112">        JSONObject loJSON = SourceDocuments().prepare(fsStatus, paDetailRemoved);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L114">            return loJSON;</span>
+        }
+
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (PurchaseOrderStatus.APPROVED.equals(fsStatus)) {</span>
+<span class="fc" id="L118">            loJSON = AdvancePayment().prepare();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L120">                return loJSON;</span>
+            }
+        }
+
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        if ((PurchaseOrderStatus.CANCELLED.equals(fsStatus) || PurchaseOrderStatus.VOID.equals(fsStatus))</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                &amp;&amp; generalRules(fsStatus).isProjectTitleUpdateRequired(fsStatus, true)) {</span>
+<span class="fc" id="L126">            loJSON = setProjectTitle(fsStatus);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L128">                return loJSON;</span>
+            }
+<span class="fc" id="L130">            pbProjectPrepared = true;</span>
+        }
+<span class="fc" id="L132">        return successJSON();</span>
+    }
+
+    /**
+     * Inside the status-change transaction: save the source documents, the
+     * payment request (APPROVED) and the project (CANCELLED / VOID); the PO
+     * quotations follow the new status.
+     */
+    @Override
+    protected JSONObject processStatusChange(String fsStatus, String fsRemarks) throws Exception {
+<span class="fc" id="L142">        JSONObject loJSON = SourceDocuments().save();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L144">            return loJSON;</span>
+        }
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (PurchaseOrderStatus.APPROVED.equals(fsStatus)) {</span>
+<span class="fc" id="L148">            loJSON = AdvancePayment().save();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L150">                return loJSON;</span>
+            }
+        }
+
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (pbProjectPrepared) {</span>
+<span class="fc" id="L155">            pbProjectPrepared = false;</span>
+<span class="fc" id="L156">            loJSON = saveProjectTitle();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L158">                return loJSON;</span>
+            }
+        }
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        switch (fsStatus) {</span>
+            case PurchaseOrderStatus.CONFIRMED:
+            case PurchaseOrderStatus.CANCELLED:
+            case PurchaseOrderStatus.VOID:
+            case PurchaseOrderStatus.RETURNED:
+<span class="fc" id="L167">                loJSON = SourceDocuments().updateQuotationStatus(fsStatus);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L169">                    return loJSON;</span>
+                }
+                break;
+            default:
+                break;
+        }
+<span class="fc" id="L175">        return successJSON();</span>
+    }
+
+    // =====================================================================
+    // Status procedures
+    // =====================================================================
+    /**
+     * Confirms an OPEN PO, then approves it automatically. A PO that is no
+     * longer OPEN goes straight to approval.
+     */
+    @Override
+    public JSONObject ConfirmTransaction(String remarks) throws ParseException, SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (PurchaseOrderStatus.OPEN.equals(Master().getTransactionStatus())) {</span>
+<span class="fc" id="L188">            JSONObject loJSON = super.ConfirmTransaction(remarks);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L190">                return result(loJSON); //error or &quot;matrix&quot;</span>
+            }
+<span class="fc" id="L192">            Master().setTransactionStatus(PurchaseOrderStatus.CONFIRMED);</span>
+        }
+<span class="fc" id="L194">        return result(ApproveTransaction(&quot;Auto-approve after confirmation.&quot;));</span>
+    }
+
+    // =====================================================================
+    // Saving
+    // =====================================================================
+    /**
+     * General Inventory save preparation (after the shared save rules, before
+     * the attachments): editing a confirmed PO updates its source documents;
+     * the engineering project title.
+     */
+    @Override
+    protected JSONObject prepareIndustrySave() throws SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L207">        String lsStatus = Master().getTransactionStatus();</span>
+
+        //editing a confirmed PO updates its source documents
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (PurchaseOrderStatus.CONFIRMED.equals(lsStatus)) {</span>
+<span class="fc" id="L211">            JSONObject loJSON = SourceDocuments().prepare(lsStatus, paDetailRemoved);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L213">                return loJSON;</span>
+            }
+        }
+
+        //engineering project title
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (generalRules(lsStatus).isProjectTitleUpdateRequired(lsStatus, false)) {</span>
+<span class="fc" id="L219">            JSONObject loJSON = setProjectTitle(lsStatus);</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L221">                return loJSON;</span>
+            }
+        }
+<span class="fc" id="L224">        return successJSON();</span>
+    }
+
+    /** Source documents, and the project title when a new PO is saved (after the attachments). */
+    @Override
+    protected JSONObject saveIndustryRecords() throws SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L230">        JSONObject loJSON = SourceDocuments().save();</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L232">            poGRider.rollbackTrans();</span>
+<span class="fc" id="L233">            return loJSON;</span>
+        }
+
+        //the engineering project is tagged when a new PO is saved
+<span class="fc" id="L237">        String lsStatus = Master().getTransactionStatus();</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (Master().getEditMode() == EditMode.ADDNEW</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                &amp;&amp; generalRules(lsStatus).isProjectTitleUpdateRequired(lsStatus, false)) {</span>
+<span class="fc" id="L240">            loJSON = saveProjectTitle();</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L242">                poGRider.rollbackTrans();</span>
+<span class="fc" id="L243">                return loJSON;</span>
+            }
+        }
+<span class="fc" id="L246">        return successJSON();</span>
+    }
+
+    @Override
+    public void initSQL() {
+<span class="fc" id="L251">        SQL_BROWSE = PurchaseOrderQueries.browse();</span>
+<span class="fc" id="L252">    }</span>
+
+    // =====================================================================
+    // Lists
+    // =====================================================================
+    /** Browse dialog; opens the picked PO. */
+    public JSONObject SearchTransaction(String fsValue, String fsSupplierID, String fsReferID, String fsTransNo, int fnSort)
+            throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc" id="L260">        initSQL();</span>
+<span class="fc" id="L261">        String lsSQL = MiscUtil.addCondition(SQL_BROWSE, String.join(&quot; AND &quot;,</span>
+<span class="fc" id="L262">                &quot;a.sIndstCdx = &quot; + SQLUtil.toSQL(Master().getIndustryID()),</span>
+<span class="fc" id="L263">                &quot;a.sCompnyID = &quot; + SQLUtil.toSQL(Master().getCompanyID()),</span>
+<span class="fc" id="L264">                &quot;a.sSupplier LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + fsSupplierID),</span>
+<span class="fc" id="L265">                &quot;a.sCategrCd LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + Master().getCategoryCode()),</span>
+<span class="fc" id="L266">                &quot;a.sReferNox LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + fsReferID),</span>
+<span class="fc" id="L267">                &quot;a.sTransNox LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + fsTransNo)));</span>
+<span class="fc" id="L268">        lsSQL += andIfAny(PurchaseOrderQueries.statusOrPending(&quot;a.cTranStat&quot;, psTranStat, psTranStat));</span>
+<span class="fc" id="L269">        lsSQL += branchFilter(&quot;a.sBranchCd&quot;);</span>
+<span class="fc" id="L270">        lsSQL += &quot; GROUP BY a.sTransNox&quot;;</span>
+<span class="fc" id="L271">        LOG.log(Level.FINE, lsSQL);</span>
+
+<span class="fc" id="L273">        JSONObject loPicked = prompt().browse(poGRider, lsSQL, fsValue,</span>
+                &quot;Transaction Date»Transaction No»Reference No»Company»Supplier&quot;,
+                &quot;dTransact»sTransNox»a.sReferNox»c.sCompnyNm»e.sCompnyNm&quot;,
+                &quot;dTransact»sTransNox»a.sReferNox»e.sCompnyNm&quot;,
+                fnSort);
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (loPicked == null) {</span>
+<span class="fc" id="L279">            return result(errorJSON(&quot;No record loaded.&quot;));</span>
+        }
+<span class="fc" id="L281">        return OpenTransaction((String) loPicked.get(&quot;sTransNox&quot;));</span>
+    }
+
+    /** POs with the statuses in psTranStat (and their pending letters). */
+    public JSONObject getPurchaseOrder(String fsSupplierID, String fsReferID, String fsTransactionNo) throws SQLException, GuanzonException {
+<span class="fc" id="L286">        return result(loadPurchaseOrders(fsSupplierID, fsReferID, psTranStat));</span>
+    }
+
+    /** POs with the statuses in psTranStat, plus POs with approval pending. */
+    public JSONObject getConfirmedPurchaseOrder(String fsSupplierID, String fsReferID) throws SQLException, GuanzonException {
+<span class="fc" id="L291">        return result(loadPurchaseOrders(fsSupplierID, fsReferID, PurchaseOrderStatus.APPROVED));</span>
+    }
+
+    /**
+     * The PO list for a screen table, read with one query: &quot;data&quot; holds one
+     * row per PO (sTransNox, dTransact, sCompnyNm, sBranchNm, cTranStat).
+     * Same filters and order as {@link #getPurchaseOrder}, without opening each
+     * PO (no POMaster list), so it is quick enough for the screen thread.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public JSONObject getPurchaseOrderList(String fsSupplierID, String fsReferID) throws SQLException {
+<span class="fc" id="L302">        JSONArray laRows = new JSONArray();</span>
+<span class="fc" id="L303">        ResultSet loRS = poGRider.executeQuery(purchaseOrderListSQL(fsSupplierID, fsReferID, psTranStat));</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L305">            return result(errorJSON(&quot;Query execution failed.&quot;));</span>
+        }
+        try {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">            while (loRS.next()) {</span>
+<span class="fc" id="L309">                JSONObject loRow = new JSONObject();</span>
+<span class="fc" id="L310">                loRow.put(&quot;sTransNox&quot;, loRS.getString(&quot;sTransNox&quot;));</span>
+<span class="fc" id="L311">                loRow.put(&quot;dTransact&quot;, loRS.getDate(&quot;dTransact&quot;));</span>
+<span class="fc" id="L312">                loRow.put(&quot;sCompnyNm&quot;, loRS.getString(&quot;sCompnyNm&quot;));</span>
+<span class="fc" id="L313">                loRow.put(&quot;sBranchNm&quot;, loRS.getString(&quot;sBranchNm&quot;));</span>
+<span class="fc" id="L314">                loRow.put(&quot;cTranStat&quot;, loRS.getString(&quot;cTranStat&quot;));</span>
+<span class="fc" id="L315">                laRows.add(loRow);</span>
+<span class="fc" id="L316">            }</span>
+        } finally {
+<span class="fc" id="L318">            MiscUtil.close(loRS);</span>
+        }
+<span class="fc" id="L320">        JSONObject loJSON = successJSON(&quot;Record loaded successfully.&quot;);</span>
+<span class="fc" id="L321">        loJSON.put(&quot;data&quot;, laRows);</span>
+<span class="fc" id="L322">        return result(loJSON);</span>
+    }
+
+    private String purchaseOrderListSQL(String fsSupplierID, String fsReferID, String fsPendingCodes) {
+<span class="fc" id="L326">        String lsSQL = MiscUtil.addCondition(PurchaseOrderQueries.purchaseOrderList(), String.join(&quot; AND &quot;,</span>
+<span class="fc" id="L327">                &quot;a.sIndstCdx = &quot; + SQLUtil.toSQL(Master().getIndustryID()),</span>
+<span class="fc" id="L328">                &quot;a.sCompnyID = &quot; + SQLUtil.toSQL(Master().getCompanyID()),</span>
+<span class="fc" id="L329">                &quot;a.sSupplier LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + fsSupplierID),</span>
+<span class="fc" id="L330">                &quot;a.sCategrCd = &quot; + SQLUtil.toSQL(Master().getCategoryCode()),</span>
+<span class="fc" id="L331">                &quot;a.sTransNox LIKE &quot; + SQLUtil.toSQL(&quot;%&quot; + fsReferID)));</span>
+<span class="fc" id="L332">        lsSQL += andIfAny(PurchaseOrderQueries.statusOrPending(&quot;a.cTranStat&quot;, psTranStat, fsPendingCodes));</span>
+<span class="fc" id="L333">        lsSQL += branchFilter(&quot;a.sBranchCd&quot;);</span>
+<span class="fc" id="L334">        lsSQL += &quot; ORDER BY a.dTransact, e.sCompnyNm, a.sTransNox ASC&quot;;</span>
+<span class="fc" id="L335">        LOG.log(Level.FINE, lsSQL);</span>
+<span class="fc" id="L336">        return lsSQL;</span>
+    }
+
+    private JSONObject loadPurchaseOrders(String fsSupplierID, String fsReferID, String fsPendingCodes) throws SQLException, GuanzonException {
+<span class="fc" id="L340">        String lsSQL = purchaseOrderListSQL(fsSupplierID, fsReferID, fsPendingCodes);</span>
+<span class="fc" id="L341">        paPOMaster = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L342">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L344">            return errorJSON(&quot;Query execution failed.&quot;);</span>
+        }
+        try {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            while (loRS.next()) {</span>
+<span class="fc" id="L348">                Model_PO_Master loMaster = new PurchaseOrderModels(poGRider).PurchaseOrderMaster();</span>
+<span class="fc" id="L349">                loMaster.openRecord(loRS.getString(&quot;sTransNox&quot;));</span>
+<span class="fc" id="L350">                paPOMaster.add(loMaster);</span>
+<span class="fc" id="L351">            }</span>
+        } finally {
+<span class="fc" id="L353">            MiscUtil.close(loRS);</span>
+        }
+<span class="fc" id="L355">        return successJSON(&quot;Record loaded successfully.&quot;);</span>
+    }
+
+    public Model_PO_Master POMaster(int row) {
+<span class="fc" id="L359">        return paPOMaster.get(row);</span>
+    }
+
+    public int getPOMasterCount() {
+<span class="fc" id="L363">        return paPOMaster.size();</span>
+    }
+
+    /** @deprecated never filled; kept so existing screens still compile. */
+    @Deprecated
+    public Model_Inv_Stock_Request_Master InvStockRequestMaster(int row) {
+<span class="fc" id="L369">        throw new IndexOutOfBoundsException(&quot;No stock request masters are loaded.&quot;);</span>
+    }
+
+    /** @deprecated never filled; always 0. */
+    @Deprecated
+    public int getInvStockRequestCount() {
+<span class="fc" id="L375">        return 0;</span>
+    }
+
+    /** &quot; AND &quot; + condition, or empty when there is no condition. */
+    private static String andIfAny(String fsCondition) {
+<span class="fc bfc" id="L380" title="All 2 branches covered.">        return fsCondition.isEmpty() ? &quot;&quot; : &quot; AND &quot; + fsCondition;</span>
+    }
+
+    /** Branches other than main office / warehouse see their own records only. */
+    private String branchFilter(String fsColumn) {
+<span class="pc bpc" id="L385" title="1 of 4 branches missed.">        if (poGRider.isMainOffice() || poGRider.isWarehouse()) {</span>
+<span class="fc" id="L386">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L388">        return &quot; AND &quot; + fsColumn + &quot; = &quot; + SQLUtil.toSQL(poGRider.getBranchCode());</span>
+    }
+
+    // =====================================================================
+    // Source documents (stock requests, PO quotations)
+    // =====================================================================
+    public JSONObject getApprovedStockRequests() throws SQLException, GuanzonException {
+<span class="fc" id="L395">        return result(SourceDocuments().getAvailableSources());</span>
+    }
+
+    public JSONObject addStockRequestOrdersToPODetail(String transactionNo) throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc" id="L399">        return result(SourceDocuments().addStockRequestLines(transactionNo));</span>
+    }
+
+    public JSONObject addPOQuotationToPODetail(String transactionNo) throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc" id="L403">        return result(SourceDocuments().addQuotationLines(transactionNo));</span>
+    }
+
+    // =====================================================================
+    // Searches used by General Inventory only (shared ones are in PurchaseOrder)
+    // =====================================================================
+    public JSONObject SearchBarcodeGeneral(String value, boolean byCode, int row, boolean hasNoSupplier)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L411">        return result(Search().inventory(value, byCode, row, hasNoSupplier, false, RecordStatus.ACTIVE, &quot;Model: &quot;, false));</span>
+    }
+
+    public JSONObject SearchBarcodeDescriptionGeneral(String value, boolean byCode, int row, boolean hasNoSupplier)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L416">        return result(Search().inventory(value, byCode, row, hasNoSupplier, false, RecordStatus.ACTIVE, &quot;Barcode: &quot;, false));</span>
+    }
+
+    public JSONObject SearchProject(String value) throws SQLException, GuanzonException {
+<span class="fc" id="L420">        return result(Search().project(value));</span>
+    }
+
+    /** Project picked from the auto-suggest list. */
+    public JSONObject SelectProject(String projectCode) throws SQLException, GuanzonException {
+<span class="fc" id="L425">        return result(Search().pickProject(projectCode));</span>
+    }
+
+    public JSONObject SearchCategoryReports(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L429">        return result(Search().categoryForReport(value, byCode));</span>
+    }
+
+    public JSONObject SearchDestinationReports(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L433">        return result(Search().destinationForReport(value, byCode));</span>
+    }
+
+    public JSONObject SearchBranchReports(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L437">        return result(Search().branchForReport(value, byCode));</span>
+    }
+
+    public JSONObject SearchSupplierReports(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L441">        return result(Search().supplierForReport(value, byCode));</span>
+    }
+
+    // =====================================================================
+    // Advance payment (General Inventory only; the payment request is built
+    // on approval, see prepareStatusChange / processStatusChange)
+    // =====================================================================
+    public JSONObject SearchPayee(String value) throws SQLException, GuanzonException {
+<span class="fc" id="L449">        return result(AdvancePayment().searchPayee(value));</span>
+    }
+
+    public JSONObject setAdvancePaymentRate(String fsValue) {
+<span class="fc" id="L453">        return applyAmount(fsValue, lnValue -&gt; generalRules(Master().getTransactionStatus()).validateAdvancePaymentRate(lnValue),</span>
+<span class="fc" id="L454">                lnValue -&gt; Master().setDownPaymentRatesPercentage(lnValue));</span>
+    }
+
+    public JSONObject setAdvancePaymentAmount(String fsValue) {
+<span class="fc" id="L458">        return applyAmount(fsValue, lnValue -&gt; generalRules(Master().getTransactionStatus()).validateAdvancePaymentAmount(lnValue),</span>
+<span class="fc" id="L459">                lnValue -&gt; Master().setDownPaymentRatesAmount(lnValue));</span>
+    }
+
+    // =====================================================================
+    // History
+    // =====================================================================
+    public void ShowApprovalHistory() throws Exception {
+<span class="fc" id="L466">        CachedRowSet loHistory = getApprovalHistory();</span>
+
+<span class="fc" id="L468">        JSONObject loEntry = MiscUtil.getEntryBy(poGRider, poMaster.getTable(), (String) poMaster.getValue(&quot;sTransNox&quot;));</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">        String lsEntryBy = isSuccess(loEntry) ? (String) loEntry.get(&quot;sCompnyNm&quot;) : &quot;&quot;;</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">        String lsEntryDate = isSuccess(loEntry) ? (String) loEntry.get(&quot;sEntryDte&quot;) : &quot;&quot;;</span>
+
+<span class="fc" id="L472">        showApprovalHistoryUI(&quot;Purchase Order&quot;, (String) poMaster.getValue(&quot;sTransNox&quot;), lsEntryBy, lsEntryDate,</span>
+<span class="fc" id="L473">                Double.parseDouble(poMaster.getValue(&quot;nTranTotl&quot;).toString()), loHistory);</span>
+<span class="fc" id="L474">    }</span>
+
+    public void ShowStatusHistory() throws Exception {
+<span class="fc" id="L477">        CachedRowSet loHistory = getStatusHistory();</span>
+<span class="fc" id="L478">        loHistory.beforeFirst();</span>
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        while (loHistory.next()) {</span>
+<span class="fc" id="L480">            loHistory.updateString(&quot;cRefrStat&quot;, POStatus.historyLabel(loHistory.getString(&quot;cRefrStat&quot;)));</span>
+<span class="fc" id="L481">            loHistory.updateRow();</span>
+        }
+
+<span class="fc" id="L484">        JSONObject loEntry = getEntryBy();</span>
+<span class="fc bfc" id="L485" title="All 2 branches covered.">        String lsEntryBy = isSuccess(loEntry) ? (String) loEntry.get(&quot;sCompnyNm&quot;) : &quot;&quot;;</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        String lsEntryDate = isSuccess(loEntry) ? (String) loEntry.get(&quot;sEntryDte&quot;) : &quot;&quot;;</span>
+
+<span class="fc" id="L488">        showStatusHistoryUI(&quot;Purchase Order&quot;, (String) poMaster.getValue(&quot;sTransNox&quot;), lsEntryBy, lsEntryDate, loHistory);</span>
+<span class="fc" id="L489">    }</span>
+
+    // =====================================================================
+    // Reports
+    // =====================================================================
+    /**
+     * Summary report rows (one per PO) for the statuses in psTranStat.
+     * Empty filters are ignored. Encoders see their own branch only.
+     */
+    public JSONObject RetrieveSummaryReports(LocalDate dateFrom, LocalDate dateThru,
+            String branch, String destination, String supplier, String category) throws SQLException, GuanzonException {
+<span class="fc" id="L500">        List&lt;String&gt; laFilter = reportFilters(&quot;a&quot;, &quot;a.sTransNox&quot;, &quot;a.sDestinat&quot;, dateFrom, dateThru, branch, destination, supplier, category);</span>
+<span class="fc" id="L501">        String lsSQL = PurchaseOrderQueries.summaryReport()</span>
+<span class="fc" id="L502">                + &quot; WHERE &quot; + String.join(&quot; AND &quot;, laFilter)</span>
+                + &quot; ORDER BY a.dTransact, a.sTransNox ASC&quot;;
+
+<span class="fc" id="L505">        return result(readReport(lsSQL, loRS -&gt; {</span>
+<span class="fc" id="L506">            JSONObject loRow = new JSONObject();</span>
+<span class="fc" id="L507">            loRow.put(&quot;Supplier&quot;, loRS.getString(&quot;Supplier&quot;));</span>
+<span class="fc" id="L508">            loRow.put(&quot;Destination&quot;, loRS.getString(&quot;Destination&quot;));</span>
+<span class="fc" id="L509">            loRow.put(&quot;Branch&quot;, loRS.getString(&quot;Branch&quot;));</span>
+<span class="fc" id="L510">            loRow.put(&quot;sTransNox&quot;, loRS.getString(&quot;sTransNox&quot;));</span>
+<span class="fc" id="L511">            loRow.put(&quot;sReferNox&quot;, loRS.getString(&quot;sReferNox&quot;));</span>
+<span class="fc" id="L512">            loRow.put(&quot;dTransact&quot;, loRS.getDate(&quot;dTransact&quot;));</span>
+<span class="fc" id="L513">            loRow.put(&quot;Category&quot;, loRS.getString(&quot;Category&quot;));</span>
+<span class="fc" id="L514">            loRow.put(&quot;Term&quot;, loRS.getString(&quot;Term&quot;));</span>
+<span class="fc" id="L515">            loRow.put(&quot;cTranStat&quot;, POStatus.label(loRS.getString(&quot;cTranStat&quot;)));</span>
+<span class="fc" id="L516">            loRow.put(&quot;Total&quot;, loRS.getDouble(&quot;nTranTotl&quot;));</span>
+<span class="fc" id="L517">            return loRow;</span>
+        }));
+    }
+
+    /**
+     * Detailed report rows (one per PO line) for the statuses in psTranStat.
+     * Empty filters are ignored. Encoders see their own branch only.
+     */
+    public JSONObject RetrieveSummaryDetailedReports(LocalDate dateFrom, LocalDate dateThru,
+            String branch, String destination, String supplier, String category) throws SQLException, GuanzonException {
+<span class="fc" id="L527">        List&lt;String&gt; laFilter = reportFilters(&quot;b&quot;, &quot;a.sTransNox&quot;, &quot;b.sDestinat&quot;, dateFrom, dateThru, branch, destination, supplier, category);</span>
+<span class="fc" id="L528">        String lsSQL = PurchaseOrderQueries.detailedReport()</span>
+<span class="fc" id="L529">                + &quot; WHERE &quot; + String.join(&quot; AND &quot;, laFilter)</span>
+                + &quot; ORDER BY b.dTransact, a.sTransNox, a.nEntryNox ASC&quot;;
+
+<span class="fc" id="L532">        return result(readReport(lsSQL, loRS -&gt; {</span>
+<span class="fc" id="L533">            JSONObject loRow = new JSONObject();</span>
+<span class="fc" id="L534">            loRow.put(&quot;Supplier&quot;, loRS.getString(&quot;Supplier&quot;));</span>
+<span class="fc" id="L535">            loRow.put(&quot;Destination&quot;, loRS.getString(&quot;Destination&quot;));</span>
+<span class="fc" id="L536">            loRow.put(&quot;sTransNox&quot;, loRS.getString(&quot;sTransNox&quot;));</span>
+<span class="fc" id="L537">            loRow.put(&quot;dTransact&quot;, loRS.getDate(&quot;dTransact&quot;));</span>
+<span class="fc" id="L538">            loRow.put(&quot;sBarCodex&quot;, loRS.getString(&quot;sBarCodex&quot;));</span>
+<span class="fc" id="L539">            loRow.put(&quot;Description&quot;, loRS.getString(&quot;Description&quot;));</span>
+<span class="fc" id="L540">            loRow.put(&quot;Brand&quot;, loRS.getString(&quot;Brand&quot;));</span>
+<span class="fc" id="L541">            loRow.put(&quot;ModelCode&quot;, loRS.getString(&quot;ModelCode&quot;));</span>
+<span class="fc" id="L542">            loRow.put(&quot;ModelName&quot;, loRS.getString(&quot;ModelName&quot;));</span>
+<span class="fc" id="L543">            loRow.put(&quot;Color&quot;, loRS.getString(&quot;Color&quot;));</span>
+<span class="fc" id="L544">            loRow.put(&quot;Quantity&quot;, loRS.getDouble(&quot;nQuantity&quot;));</span>
+<span class="fc" id="L545">            loRow.put(&quot;nReceived&quot;, loRS.getDouble(&quot;nReceived&quot;));</span>
+<span class="fc" id="L546">            loRow.put(&quot;nCancelld&quot;, loRS.getDouble(&quot;nCancelld&quot;));</span>
+<span class="fc" id="L547">            loRow.put(&quot;UnitPrice&quot;, loRS.getDouble(&quot;nUnitPrce&quot;));</span>
+<span class="fc" id="L548">            loRow.put(&quot;Total&quot;, loRS.getDouble(&quot;Total&quot;));</span>
+<span class="fc" id="L549">            return loRow;</span>
+        }));
+    }
+
+    /** @deprecated misspelled; use {@link #RetrieveSummaryReports}. The first parameter was never used. */
+    @Deprecated
+    public JSONObject RetriveSummaryReports(Boolean issummarized, LocalDate dateFrom, LocalDate dateThru,
+            String Branch, String Destination, String Supplier, String Category) throws SQLException, GuanzonException {
+<span class="fc" id="L557">        return RetrieveSummaryReports(dateFrom, dateThru, Branch, Destination, Supplier, Category);</span>
+    }
+
+    /** @deprecated misspelled; use {@link #RetrieveSummaryDetailedReports}. The first parameter was never used. */
+    @Deprecated
+    public JSONObject RetriveSummaryDetailedReports(Boolean issummarized, LocalDate dateFrom, LocalDate dateThru,
+            String Branch, String Destination, String Supplier, String Category) throws SQLException, GuanzonException {
+<span class="fc" id="L564">        return RetrieveSummaryDetailedReports(dateFrom, dateThru, Branch, Destination, Supplier, Category);</span>
+    }
+
+    /**
+     * Filters shared by both reports. Remembers the date range for the printed
+     * report header.
+     *
+     * @param fsMaster alias of PO_Master in the report query
+     */
+    private List&lt;String&gt; reportFilters(String fsMaster, String fsTransNoColumn, String fsDestinationColumn,
+            LocalDate fdFrom, LocalDate fdThru, String fsBranch, String fsDestination, String fsSupplier, String fsCategory) {
+<span class="fc" id="L575">        List&lt;String&gt; laFilter = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L576">        laFilter.add(fsMaster + &quot;.sCompnyID = &quot; + SQLUtil.toSQL(Master().getCompanyID()));</span>
+<span class="fc" id="L577">        laFilter.add(fsMaster + &quot;.sIndstCdx = &quot; + SQLUtil.toSQL(Master().getIndustryID()));</span>
+
+<span class="fc bfc" id="L579" title="All 2 branches covered.">        psReportDateFrom = fdFrom == null ? &quot;&quot; : fdFrom.toString();</span>
+<span class="fc bfc" id="L580" title="All 2 branches covered.">        psReportDateThru = fdThru == null ? &quot;&quot; : fdThru.toString();</span>
+<span class="pc bpc" id="L581" title="1 of 4 branches missed.">        if (fdFrom != null &amp;&amp; fdThru != null) {</span>
+<span class="fc" id="L582">            laFilter.add(fsMaster + &quot;.dTransact BETWEEN &quot; + SQLUtil.toSQL(java.sql.Date.valueOf(fdFrom))</span>
+<span class="fc" id="L583">                    + &quot; AND &quot; + SQLUtil.toSQL(java.sql.Date.valueOf(fdThru)));</span>
+        }
+<span class="fc bfc" id="L585" title="All 4 branches covered.">        if (fsBranch != null &amp;&amp; !fsBranch.trim().isEmpty()) {</span>
+<span class="fc" id="L586">            laFilter.add(fsMaster + &quot;.sBranchCd = &quot; + SQLUtil.toSQL(fsBranch));</span>
+        }
+<span class="pc bpc" id="L588" title="1 of 4 branches missed.">        if (fsDestination != null &amp;&amp; !fsDestination.trim().isEmpty()) {</span>
+<span class="fc" id="L589">            laFilter.add(fsDestinationColumn + &quot; = &quot; + SQLUtil.toSQL(fsDestination));</span>
+        }
+<span class="fc bfc" id="L591" title="All 4 branches covered.">        if (fsSupplier != null &amp;&amp; !fsSupplier.trim().isEmpty()) {</span>
+<span class="fc" id="L592">            laFilter.add(fsMaster + &quot;.sSupplier = &quot; + SQLUtil.toSQL(fsSupplier));</span>
+        }
+<span class="pc bpc" id="L594" title="1 of 4 branches missed.">        if (fsCategory != null &amp;&amp; !fsCategory.trim().isEmpty()) {</span>
+<span class="fc" id="L595">            laFilter.add(fsMaster + &quot;.sCategrCd = &quot; + SQLUtil.toSQL(fsCategory));</span>
+        }
+<span class="fc bfc" id="L597" title="All 2 branches covered.">        if (poGRider.getUserLevel() &lt;= UserRight.ENCODER) {</span>
+<span class="fc" id="L598">            laFilter.add(fsTransNoColumn + &quot; LIKE &quot; + SQLUtil.toSQL(poGRider.getBranchCode() + &quot;%&quot;));</span>
+        }
+<span class="fc" id="L600">        String lsStatus = PurchaseOrderQueries.statusIn(fsMaster + &quot;.cTranStat&quot;, psTranStat);</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        if (!lsStatus.isEmpty()) {</span>
+<span class="fc" id="L602">            laFilter.add(lsStatus);</span>
+        }
+<span class="fc" id="L604">        return laFilter;</span>
+    }
+
+    @FunctionalInterface
+    private interface RowReader {
+
+        JSONObject read(ResultSet foRS) throws SQLException;
+    }
+
+    /** Runs a report query: &quot;data&quot; holds the rows; &quot;error&quot; with empty data when there are none. */
+    private JSONObject readReport(String fsSQL, RowReader foReader) throws SQLException {
+<span class="fc" id="L615">        LOG.log(Level.FINE, fsSQL);</span>
+<span class="fc" id="L616">        ResultSet loRS = poGRider.executeQuery(fsSQL);</span>
+<span class="fc bfc" id="L617" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L618">            return errorJSON(&quot;Query execution failed.&quot;);</span>
+        }
+
+<span class="fc" id="L621">        JSONArray laData = new JSONArray();</span>
+        try {
+<span class="fc bfc" id="L623" title="All 2 branches covered.">            while (loRS.next()) {</span>
+<span class="fc" id="L624">                laData.add(foReader.read(loRS));</span>
+            }
+        } finally {
+<span class="fc" id="L627">            MiscUtil.close(loRS);</span>
+        }
+
+<span class="fc bfc" id="L630" title="All 2 branches covered.">        JSONObject loJSON = laData.isEmpty() ? errorJSON(&quot;No records found.&quot;) : successJSON(&quot;Record(s) loaded successfully.&quot;);</span>
+<span class="fc" id="L631">        loJSON.put(&quot;data&quot;, laData);</span>
+<span class="fc" id="L632">        return loJSON;</span>
+    }
+
+    // =====================================================================
+    // Helpers: override a create... method to give an industry its own version
+    // =====================================================================
+    protected PurchaseOrderSourceDocuments createSourceDocuments() {
+<span class="fc" id="L639">        return new PurchaseOrderSourceDocuments(this, poGRider,</span>
+<span class="nc" id="L640">                () -&gt; new InvWarehouseControllers(poGRider, logwrapr),</span>
+<span class="nc" id="L641">                () -&gt; new QuotationControllers(poGRider, logwrapr), //QUOTATION LINK (cas-poqt)</span>
+                this::AddDetail);
+    }
+
+    protected PurchaseOrderPrinter createPrinter() {
+<span class="fc" id="L646">        return new PurchaseOrderPrinter(this, poGRider, Audit());</span>
+    }
+
+    protected PurchaseOrderAdvancePayment createAdvancePayment() {
+<span class="pc" id="L650">        return new PurchaseOrderAdvancePayment(this, poGRider, () -&gt; new CashflowControllers(poGRider, logwrapr));</span>
+    }
+
+    public PurchaseOrderAdvancePayment AdvancePayment() {
+<span class="fc bfc" id="L654" title="All 2 branches covered.">        if (poAdvancePayment == null) {</span>
+<span class="fc" id="L655">            poAdvancePayment = createAdvancePayment();</span>
+        }
+<span class="fc" id="L657">        return poAdvancePayment;</span>
+    }
+
+    public PurchaseOrderSourceDocuments SourceDocuments() {
+<span class="fc bfc" id="L661" title="All 2 branches covered.">        if (poSourceDocuments == null) {</span>
+<span class="fc" id="L662">            poSourceDocuments = createSourceDocuments();</span>
+        }
+<span class="fc" id="L664">        return poSourceDocuments;</span>
+    }
+
+    public PurchaseOrderPrinter Printer() {
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        if (poPrinter == null) {</span>
+<span class="fc" id="L669">            poPrinter = createPrinter();</span>
+        }
+<span class="fc" id="L671">        return poPrinter;</span>
+    }
+
+    // ---- Printing ----
+    public JSONObject printTransaction(String jasperType) {
+<span class="fc" id="L676">        return result(Printer().printTransaction(jasperType));</span>
+    }
+
+    /** Prints the summary/detailed report for the date range of the last Retrieve...Reports call. */
+    public JSONObject printReports(Boolean isSummarized, JSONArray reportData) {
+<span class="fc" id="L681">        return result(Printer().printReports(Boolean.TRUE.equals(isSummarized), reportData, psReportDateFrom, psReportDateThru));</span>
+    }
+
+    /** Same as {@link #printReports(Boolean, JSONArray)}. */
+    public JSONObject PrintSummaryReports(Boolean isSummarized, JSONArray reportData) {
+<span class="fc" id="L686">        return printReports(isSummarized, reportData);</span>
+    }
+
+    public static String formatDateToText(String fsDate) {
+<span class="fc" id="L690">        return PurchaseOrderPrinter.formatDateToText(fsDate);</span>
+    }
+
+    // =====================================================================
+    // Engineering project title (General Inventory only)
+    // =====================================================================
+    private Model_Project Project() {
+<span class="fc bfc" id="L697" title="All 2 branches covered.">        if (poProject == null) {</span>
+<span class="fc" id="L698">            poProject = new ParamModels(poGRider).Project();</span>
+        }
+<span class="fc" id="L700">        return poProject;</span>
+    }
+
+    /** Opens the referenced project and tags (OPEN) or untags (CANCELLED/VOID) it. */
+    private JSONObject setProjectTitle(String fsStatus) throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L705">        Model_Project loProject = Project();</span>
+<span class="fc" id="L706">        loProject.initialize();</span>
+
+<span class="fc" id="L708">        JSONObject loJSON = loProject.openRecord(Master().getReference());</span>
+<span class="fc bfc" id="L709" title="All 2 branches covered.">        if (&quot;error&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L710">            return loJSON;</span>
+        }
+<span class="fc" id="L712">        loJSON = loProject.updateRecord();</span>
+<span class="fc bfc" id="L713" title="All 2 branches covered.">        if (&quot;error&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L714">            return loJSON;</span>
+        }
+
+<span class="pc bpc" id="L717" title="1 of 3 branches missed.">        switch (fsStatus) {</span>
+            case PurchaseOrderStatus.OPEN:
+<span class="fc" id="L719">                loJSON = loProject.isUsed(true);</span>
+<span class="fc" id="L720">                break;</span>
+            case PurchaseOrderStatus.CANCELLED:
+            case PurchaseOrderStatus.VOID:
+<span class="fc" id="L723">                loJSON = loProject.isUsed(false);</span>
+<span class="fc" id="L724">                break;</span>
+            default:
+                break;
+        }
+<span class="fc" id="L728">        loProject.setModifiedDate(poGRider.getServerDate());</span>
+<span class="fc" id="L729">        loProject.setModifyingId(poGRider.getUserID());</span>
+
+<span class="fc bfc" id="L731" title="All 2 branches covered.">        if (&quot;error&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L732">            return loJSON;</span>
+        }
+<span class="fc" id="L734">        return successJSON();</span>
+    }
+
+    private JSONObject saveProjectTitle() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L738">        JSONObject loJSON = Project().saveRecord();</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">        if (&quot;error&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L740">            return loJSON;</span>
+        }
+<span class="fc" id="L742">        return successJSON();</span>
+    }
+
+    /**
+     * Whether a project is used by more than one PO.
+     *
+     * @return &quot;result&quot; (&quot;error&quot; when used by more than one PO), &quot;message&quot;, &quot;count&quot;
+     */
+    public JSONObject CheckProjectUsage(String fsProjectCode) throws SQLException, GuanzonException {
+<span class="fc" id="L751">        int lnCount = generalRules(Master().getTransactionStatus()).getProjectUsageCount(fsProjectCode);</span>
+<span class="fc bfc" id="L752" title="All 2 branches covered.">        JSONObject loJSON = lnCount &gt; 1</span>
+<span class="fc" id="L753">                ? errorJSON(&quot;Project is already used in multiple transactions.&quot;)</span>
+<span class="fc" id="L754">                : successJSON(&quot;No usage found. You can proceed.&quot;);</span>
+<span class="fc" id="L755">        loJSON.put(&quot;count&quot;, lnCount);</span>
+<span class="fc" id="L756">        return result(loJSON);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

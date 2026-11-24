@@ -1,0 +1,1227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrder.java</span></div><h1>PurchaseOrder.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.guanzon.appdriver.agent.ActionAuthManager;
+import org.guanzon.appdriver.agent.MatrixAuthChecker;
+import org.guanzon.appdriver.agent.services.Model;
+import org.guanzon.appdriver.agent.services.Transaction;
+import org.guanzon.appdriver.agent.systables.TransactionAttachment;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscUtil;
+import org.guanzon.appdriver.constant.EditMode;
+import org.guanzon.appdriver.constant.RecordStatus;
+import org.guanzon.appdriver.constant.UserRight;
+import org.guanzon.cas.client.services.ClientControllers;
+import org.guanzon.cas.inv.InvTransCons;
+import org.guanzon.cas.inv.InventoryTransaction;
+import org.guanzon.cas.inv.services.InvControllers;
+import org.guanzon.cas.parameter.services.ParamControllers;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.services.PurchaseOrderModels;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import ph.com.guanzongroup.cas.po.utility.Results;
+import org.json.simple.parser.ParseException;
+import ph.com.guanzongroup.cas.po.status.POStatus;
+import ph.com.guanzongroup.cas.po.validator.PurchaseOrderValidator;
+
+/**
+ * Abstract base controller for Purchase Order.
+ *
+ * &lt;p&gt;
+ * Handles only the main procedures shared by every industry:&lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #InitTransaction()}&lt;/li&gt;
+ * &lt;li&gt;{@link #NewTransaction()}&lt;/li&gt;
+ * &lt;li&gt;{@link #OpenTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #UpdateTransaction()}&lt;/li&gt;
+ * &lt;li&gt;{@link #SaveTransaction()}&lt;/li&gt;
+ * &lt;li&gt;{@link #ConfirmTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #ApproveTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #CancelTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #PostTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #VoidTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #ReturnTransaction(String)}&lt;/li&gt;
+ * &lt;li&gt;{@link #POCancelTransaction()}, {@link #RevertStatus()}: status writes
+ * inside a parent's DB transaction&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * It also holds what every industry shares: the detail grid (AddDetail,
+ * RemoveDetail, ...), discounts and totals (setDiscountRate, computeNetTotal,
+ * ...), attachments (addAttachment, loadAttachments, ...), the audit trail
+ * (getApprover, getEntryBy, getConfirmedBy, ...), the save rules
+ * {@link #checkConfirmedEditApproval()} and {@link #checkReturnedEdit()} (run
+ * by willSave), and the searches (SearchBranch, SearchSupplier, SearchBarcode,
+ * ...) with the {@link #Search()} helper behind
+ * them.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Every procedure is overridable. An industry controller extends this class
+ * (PurchaseOrderGeneral, PurchaseOrderMC, PurchaseOrderMP, PurchaseOrderSP,
+ * PurchaseOrderAppliance) and either overrides a whole procedure, or plugs
+ * into it through the protected hooks:&lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #createValidator()} (required): the industry's rules.&lt;/li&gt;
+ * &lt;li&gt;{@link #initSQL()} (required): browse SQL.&lt;/li&gt;
+ * &lt;li&gt;{@link #prepareIndustrySave()}, {@link #saveIndustryRecords()}: the
+ * industry's own save steps ({@link #willSave()} and {@link #saveOthers()}
+ * already run the shared ones).&lt;/li&gt;
+ * &lt;li&gt;{@link #resetOthers()}: clear the industry's own objects on New /
+ * Open.&lt;/li&gt;
+ * &lt;li&gt;{@link #initOthers()}: extra objects created by InitTransaction.&lt;/li&gt;
+ * &lt;li&gt;{@link #prepareStatusChange(String)}: work before a status-change
+ * transaction starts.&lt;/li&gt;
+ * &lt;li&gt;{@link #processStatusChange(String, String)}: work inside the
+ * status-change transaction, before the new status is written.&lt;/li&gt;
+ * &lt;li&gt;{@link #postInventoryLedger(String)}: inventory ledger on approve /
+ * cancel.&lt;/li&gt;
+ * &lt;li&gt;{@link #prepareRules(PurchaseOrderValidator)}: extra context for the
+ * validator.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;
+ * Business rules live in the validators (see {@link PurchaseOrderValidator}).
+ * Dialogs go through a {@link UserPrompt} ({@link #setUserPrompt}), so the
+ * controller also runs without a screen.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * Results: every method builds its own result object. The inherited
+ * {@code poJSON} field is only set when a public method returns (through
+ * {@link #result(JSONObject)}), for code that still reads it; never read it to
+ * get the result of another call.&lt;/p&gt;
+ */
+<span class="fc" id="L108">public abstract class PurchaseOrder extends Transaction {</span>
+
+    private UserPrompt poPrompt;
+    /** Detail rows removed from the PO while editing. */
+<span class="fc" id="L112">    protected List&lt;Model&gt; paDetailRemoved = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L113">    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);</span>
+
+    // =====================================================================
+    // User interface
+    // =====================================================================
+    /** Dialogs used by this controller (default: JavaFX dialogs). */
+    public void setUserPrompt(UserPrompt foPrompt) {
+<span class="fc" id="L120">        poPrompt = foPrompt;</span>
+<span class="fc" id="L121">    }</span>
+
+    protected UserPrompt prompt() {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (poPrompt == null) {</span>
+<span class="fc" id="L125">            poPrompt = new FxUserPrompt();</span>
+        }
+<span class="fc" id="L127">        return poPrompt;</span>
+    }
+
+    // =====================================================================
+    // Procedures
+    // =====================================================================
+    /** Creates the master/detail models, then the industry's own objects (initOthers). */
+    public JSONObject InitTransaction() {
+<span class="fc" id="L135">        SOURCE_CODE = InvTransCons.PURCHASE_ORDER;</span>
+<span class="fc" id="L136">        poMaster = new PurchaseOrderModels(poGRider).PurchaseOrderMaster();</span>
+<span class="fc" id="L137">        poDetail = new PurchaseOrderModels(poGRider).PurchaseOrderDetails();</span>
+<span class="fc" id="L138">        paDetail = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L139">        paDetailRemoved = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L141">        initOthers();</span>
+
+<span class="fc" id="L143">        return initialize();</span>
+    }
+
+    public JSONObject NewTransaction() throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (!pbWthParent) {</span>
+<span class="fc" id="L148">            JSONObject loJSON = seekApproval();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L150">                return result(loJSON);</span>
+            }
+        }
+
+<span class="fc" id="L154">        clearEditState();</span>
+<span class="fc" id="L155">        return result(newTransaction());</span>
+    }
+
+    public JSONObject OpenTransaction(String transactionNo) throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (!pbWthParent) {</span>
+<span class="fc" id="L160">            JSONObject loJSON = seekApproval();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L162">                return result(loJSON);</span>
+            }
+        }
+
+<span class="fc" id="L166">        clearEditState();</span>
+<span class="fc" id="L167">        return result(openTransaction(transactionNo));</span>
+    }
+
+    public JSONObject UpdateTransaction() throws SQLException, GuanzonException {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (!pbWthParent) {</span>
+<span class="fc" id="L172">            JSONObject loJSON = seekApproval();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L174">                return result(loJSON);</span>
+            }
+        }
+
+<span class="fc" id="L178">        paDetailRemoved.clear();</span>
+<span class="fc" id="L179">        return result(updateTransaction());</span>
+    }
+
+    /** Saves through the framework: willSave, save (validator), saveOthers, saveComplete. */
+    public JSONObject SaveTransaction() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L184">        return result(saveTransaction());</span>
+    }
+
+    public JSONObject ConfirmTransaction(String remarks) throws ParseException, SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L188">        return result(changeStatus(PurchaseOrderStatus.CONFIRMED, remarks, remarks,</span>
+                &quot;ConfirmTransaction&quot;, &quot;Transaction confirmed successfully.&quot;, true));
+    }
+
+    /**
+     * Approves the transaction. When the authorization matrix files a pending
+     * request, the result is &quot;success&quot; with a &quot;request submitted&quot; message (the
+     * UI treats it as done), as before.
+     */
+    public JSONObject ApproveTransaction(String remarks) throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L198">        JSONObject loJSON = changeStatus(PurchaseOrderStatus.APPROVED, remarks, &quot;Approval matrix&quot;,</span>
+                &quot;Approve Transaction&quot;, &quot;Transaction approved successfully.&quot;, true);
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (&quot;matrix&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L202">            loJSON = successJSON(&quot;Transaction approving request submitted successfully.&quot;);</span>
+        }
+<span class="fc" id="L204">        return result(loJSON);</span>
+    }
+
+    public JSONObject CancelTransaction(String remarks) throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L208">        return result(changeStatus(PurchaseOrderStatus.CANCELLED, remarks, remarks,</span>
+                &quot;Cancel Transaction&quot;, &quot;Transaction cancelled successfully.&quot;, true));
+    }
+
+    public JSONObject PostTransaction(String remarks) throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+        //when called with a parent, the parent owns the DB transaction
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        return result(changeStatus(PurchaseOrderStatus.POSTED, remarks, remarks,</span>
+                &quot;Post Transaction&quot;, &quot;Transaction posted successfully.&quot;, !pbWthParent));
+    }
+
+    public JSONObject VoidTransaction(String remarks) throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L219">        return result(changeStatus(PurchaseOrderStatus.VOID, remarks, remarks,</span>
+                &quot;Void Transaction&quot;, &quot;Transaction voided successfully.&quot;, true));
+    }
+
+    /**
+     * Returns the PO. Uses the validator and an approving officer (for
+     * encoders) instead of the authorization matrix.
+     */
+    public JSONObject ReturnTransaction(String remarks) throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L228">        final String lsStatus = PurchaseOrderStatus.RETURNED;</span>
+
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (getEditMode() != EditMode.READY) {</span>
+<span class="fc" id="L231">            return result(errorJSON(&quot;No transaction was loaded.&quot;));</span>
+        }
+
+<span class="fc" id="L234">        JSONObject loJSON = isEntryOkay(lsStatus);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L236">            return result(loJSON);</span>
+        }
+
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (poGRider.getUserLevel() &lt;= UserRight.ENCODER) {</span>
+<span class="fc" id="L240">            loJSON = prompt().getUserApproval(poGRider);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L242">                return result(loJSON);</span>
+            }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            if (Integer.parseInt(loJSON.get(&quot;nUserLevl&quot;).toString()) &lt;= UserRight.ENCODER) {</span>
+<span class="fc" id="L245">                return result(errorJSON(&quot;User is not an authorized approving officer..&quot;));</span>
+            }
+<span class="fc" id="L247">            setApproving((String) loJSON.get(&quot;sUserIDxx&quot;));</span>
+        }
+
+<span class="fc" id="L250">        loJSON = prepareStatusChange(lsStatus);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L252">            return result(loJSON);</span>
+        }
+
+<span class="fc" id="L255">        return result(inTransaction(&quot;Return Transaction&quot;, true, () -&gt; {</span>
+<span class="fc" id="L256">            JSONObject loStep = processStatusChange(lsStatus, remarks);</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            if (!isSuccess(loStep)) {</span>
+<span class="fc" id="L258">                return loStep;</span>
+            }
+<span class="fc" id="L260">            loStep = statusChange(poMaster.getTable(), (String) poMaster.getValue(&quot;sTransNox&quot;), remarks, lsStatus, false, true);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            if (!isSuccess(loStep)) {</span>
+<span class="fc" id="L262">                return loStep;</span>
+            }
+<span class="fc" id="L264">            return successJSON(&quot;Transaction returned successfully.&quot;);</span>
+        }));
+    }
+
+    /** Cancels inside a parent's DB transaction (the parent rolls back on error). */
+    public JSONObject POCancelTransaction() throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L270">        return result(writeStatus(PurchaseOrderStatus.CANCELLED, &quot;CancelTransaction&quot;, &quot;Transaction cancelled successfully.&quot;));</span>
+    }
+
+    /** Puts back the previous status, inside a parent's DB transaction. */
+    public JSONObject RevertStatus() throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L275">        String lsStatus = getPrevStatus();</span>
+<span class="pc bpc" id="L276" title="1 of 4 branches missed.">        if (lsStatus == null || lsStatus.isEmpty()) {</span>
+<span class="fc" id="L277">            return result(successJSON());</span>
+        }
+<span class="fc" id="L279">        return result(writeStatus(lsStatus, &quot;RevertStatus&quot;, &quot;Transaction status reverted successfully.&quot;));</span>
+    }
+
+    private JSONObject writeStatus(String fsStatus, String fsRemarks, String fsSuccessMessage) {
+        try {
+<span class="fc" id="L284">            JSONObject loJSON = statusChange(poMaster.getTable(), (String) poMaster.getValue(&quot;sTransNox&quot;), fsRemarks, fsStatus, false, true);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            return isSuccess(loJSON) ? successJSON(fsSuccessMessage) : loJSON;</span>
+<span class="fc" id="L286">        } catch (GuanzonException | SQLException | CloneNotSupportedException ex) {</span>
+<span class="fc" id="L287">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="fc" id="L288">            return errorJSON(MiscUtil.getException(ex));</span>
+        }
+    }
+
+    /** Most recent status before the current one; empty when none. */
+    public String getPrevStatus() throws SQLException {
+<span class="fc" id="L294">        String lsSQL = PurchaseOrderQueries.previousStatus(Master().getTransactionNo(), Master().getTable(), Master().getTransactionStatus());</span>
+<span class="fc" id="L295">        ResultSet loRS = poGRider.executeQuery(lsSQL);</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L297">            return &quot;&quot;;</span>
+        }
+        try {
+<span class="fc bfc" id="L300" title="All 2 branches covered.">            return loRS.next() ? loRS.getString(&quot;cRefrStat&quot;) : &quot;&quot;;</span>
+        } finally {
+<span class="fc" id="L302">            MiscUtil.close(loRS);</span>
+        }
+    }
+
+    // =====================================================================
+    // Status-change template (used by the procedures above; industries may
+    // reuse it for their own status procedures, e.g. Post or Void)
+    // =====================================================================
+    /**
+     * Shared flow for a status change:
+     * &lt;ol&gt;
+     * &lt;li&gt;a transaction must be loaded;&lt;/li&gt;
+     * &lt;li&gt;validator + authorization ({@link #authorizeStatus});&lt;/li&gt;
+     * &lt;li&gt;{@link #prepareStatusChange(String)} (before the DB transaction);&lt;/li&gt;
+     * &lt;li&gt;inside one DB transaction: {@link #processStatusChange},
+     * {@link #postInventoryLedger}, write the new status, post the
+     * authorization.&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param fsStatus new status
+     * @param fsRemarks remarks saved with the status change
+     * @param fsPendingRemarks remarks saved when the matrix files a pending request
+     * @param fsEvent event name for the DB transaction log
+     * @param fsSuccessMessage message on success
+     * @param fbOwnTrans false when a parent already owns the DB transaction
+     * @return &quot;success&quot;, &quot;error&quot;, or &quot;matrix&quot; (a pending authorization request was filed)
+     */
+    protected JSONObject changeStatus(String fsStatus, String fsRemarks, String fsPendingRemarks,
+            String fsEvent, String fsSuccessMessage, boolean fbOwnTrans)
+            throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc bfc" id="L332" title="All 2 branches covered.">        if (getEditMode() != EditMode.READY) {</span>
+<span class="fc" id="L333">            return errorJSON(&quot;No transaction was loaded.&quot;);</span>
+        }
+
+<span class="fc" id="L336">        final MatrixAuthChecker[] loCheck = new MatrixAuthChecker[1];</span>
+<span class="fc" id="L337">        JSONObject loJSON = authorizeStatus(fsStatus, fsPendingRemarks, fsEvent, loCheck);</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L339">            return loJSON; //error or &quot;matrix&quot;</span>
+        }
+
+<span class="fc" id="L342">        loJSON = prepareStatusChange(fsStatus);</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L344">            return loJSON;</span>
+        }
+
+<span class="fc" id="L347">        return inTransaction(fsEvent, fbOwnTrans, () -&gt; {</span>
+<span class="fc" id="L348">            JSONObject loStep = processStatusChange(fsStatus, fsRemarks);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            if (!isSuccess(loStep)) {</span>
+<span class="fc" id="L350">                return loStep;</span>
+            }
+
+<span class="fc" id="L353">            loStep = postInventoryLedger(fsStatus);</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            if (!isSuccess(loStep)) {</span>
+<span class="nc" id="L355">                return loStep;</span>
+            }
+
+<span class="fc" id="L358">            loStep = statusChange(poMaster.getTable(), (String) poMaster.getValue(&quot;sTransNox&quot;), fsRemarks, fsStatus, false, true);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            if (!isSuccess(loStep)) {</span>
+<span class="fc" id="L360">                return loStep;</span>
+            }
+
+<span class="fc bfc" id="L363" title="All 2 branches covered.">            if (loCheck[0] != null) {</span>
+<span class="fc" id="L364">                loCheck[0].postAuth();</span>
+            }
+<span class="fc" id="L366">            return successJSON(fsSuccessMessage);</span>
+        });
+    }
+
+    // =====================================================================
+    // Hooks (override in the industry controller)
+    // =====================================================================
+    /** Validator for this controller's industry. Must extend {@link PurchaseOrderValidator}. */
+    protected abstract PurchaseOrderValidator createValidator();
+
+    /** Extra objects created by InitTransaction. Default: none. */
+    protected void initOthers() {
+<span class="fc" id="L378">    }</span>
+
+    /**
+     * Work before the status-change DB transaction starts (e.g. prepare the
+     * source documents). A non-success result stops the change. Default: none.
+     */
+    protected JSONObject prepareStatusChange(String fsStatus)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L386">        return successJSON();</span>
+    }
+
+    /**
+     * Work inside the status-change DB transaction, before the new status is
+     * written (e.g. save the source documents). A non-success result rolls the
+     * whole change back. Default: none.
+     */
+    protected JSONObject processStatusChange(String fsStatus, String fsRemarks) throws Exception {
+<span class="fc" id="L395">        return successJSON();</span>
+    }
+
+    /**
+     * Inventory ledger, inside the status-change DB transaction.
+     * &lt;ul&gt;
+     * &lt;li&gt;APPROVED: records the order quantities.&lt;/li&gt;
+     * &lt;li&gt;CANCELLED of an APPROVED PO: reverses that entry.&lt;/li&gt;
+     * &lt;/ul&gt;
+     * Override to change or skip it for an industry.
+     */
+    protected JSONObject postInventoryLedger(String fsStatus) throws Exception {
+        boolean lbReverse;
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        if (PurchaseOrderStatus.APPROVED.equals(fsStatus)) {</span>
+<span class="fc" id="L409">            lbReverse = false;</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        } else if (PurchaseOrderStatus.CANCELLED.equals(fsStatus)</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                &amp;&amp; PurchaseOrderStatus.APPROVED.equalsIgnoreCase((String) poMaster.getValue(&quot;cTranStat&quot;))) {</span>
+<span class="fc" id="L412">            lbReverse = true;</span>
+        } else {
+<span class="fc" id="L414">            return successJSON();</span>
+        }
+
+<span class="fc" id="L417">        InventoryTransaction loTrans = new InventoryTransaction(poGRider, psBranchCode);</span>
+<span class="fc" id="L418">        loTrans.PurchaseOrder((String) poMaster.getValue(&quot;sTransNox&quot;), (Date) poMaster.getValue(&quot;dTransact&quot;), lbReverse);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">        for (Model loDetail : paDetail) {</span>
+<span class="fc" id="L420">            Model_PO_Detail detail = (Model_PO_Detail) loDetail;</span>
+<span class="fc" id="L421">            loTrans.addDetail((String) poMaster.getValue(&quot;sIndstCdx&quot;), detail.getStockID(), &quot;0&quot;, 0,</span>
+<span class="fc" id="L422">                    detail.getQuantity().doubleValue(), detail.getUnitPrice().doubleValue());</span>
+<span class="fc" id="L423">        }</span>
+<span class="fc" id="L424">        loTrans.saveTransaction();</span>
+<span class="fc" id="L425">        return successJSON();</span>
+    }
+
+    /**
+     * Hook: clear the industry's own objects when a PO is created or opened, so
+     * nothing from the previous PO carries over. Default: nothing.
+     */
+    protected void resetOthers() {
+<span class="nc" id="L433">    }</span>
+
+    /** Extra context for the validator. Default: none; removed details and the attachment count are always passed. */
+    protected void prepareRules(PurchaseOrderValidator foRules) {
+<span class="fc" id="L437">    }</span>
+
+    // =====================================================================
+    // Framework callbacks
+    // =====================================================================
+    /** Browse SQL used by the industry's search (sets SQL_BROWSE). */
+    @Override
+    public abstract void initSQL();
+
+    /**
+     * Before saving, in this order: prepare the rows (transaction no., drop
+     * empty rows, numbering); the shared save rules
+     * ({@link #checkConfirmedEditApproval()}, {@link #checkReturnedEdit()});
+     * the industry's own preparation ({@link #prepareIndustrySave()}); the
+     * attachments (link to this PO, rename duplicates, upload unsent files).
+     */
+    @Override
+    public JSONObject willSave() throws SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L455">        prepareDetailsForSave();</span>
+
+<span class="fc" id="L457">        JSONObject loJSON = checkConfirmedEditApproval();</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L459">            return loJSON;</span>
+        }
+
+<span class="fc" id="L462">        loJSON = checkReturnedEdit();</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L464">            return loJSON;</span>
+        }
+
+<span class="fc" id="L467">        loJSON = prepareIndustrySave();</span>
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L469">            return loJSON;</span>
+        }
+
+<span class="fc" id="L472">        return Attachments().prepareForSave(Master().getTransactionNo(), Master().getBranchCode());</span>
+    }
+
+    /**
+     * Records saved together with the PO, inside its DB transaction: the
+     * attachments, then the industry's own records
+     * ({@link #saveIndustryRecords()}).
+     */
+    @Override
+    public JSONObject saveOthers() {
+        try {
+<span class="fc" id="L483">            JSONObject loJSON = Attachments().save();</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L485">                return loJSON;</span>
+            }
+<span class="fc" id="L487">            return saveIndustryRecords();</span>
+<span class="fc" id="L488">        } catch (CloneNotSupportedException | SQLException | GuanzonException ex) {</span>
+<span class="fc" id="L489">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="fc" id="L490">            return errorJSON(ex.getMessage());</span>
+        }
+    }
+
+    /**
+     * Industry hook: the industry's own preparation before saving, after the
+     * shared save rules. Default: nothing.
+     */
+    protected JSONObject prepareIndustrySave() throws SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L499">        return successJSON();</span>
+    }
+
+    /**
+     * Industry hook: the industry's own records saved with the PO, inside its
+     * DB transaction, after the attachments. Default: nothing.
+     */
+    protected JSONObject saveIndustryRecords() throws SQLException, CloneNotSupportedException, GuanzonException {
+<span class="fc" id="L507">        return successJSON();</span>
+    }
+
+    @Override
+    public JSONObject initFields() {
+<span class="fc" id="L512">        return successJSON();</span>
+    }
+
+    /** Entry validation before saving: validator rules for OPEN. */
+    @Override
+    protected JSONObject save() throws CloneNotSupportedException, SQLException, GuanzonException {
+<span class="fc" id="L518">        return isEntryOkay(PurchaseOrderStatus.OPEN);</span>
+    }
+
+    @Override
+    protected JSONObject isEntryOkay(String status) throws CloneNotSupportedException {
+<span class="fc" id="L523">        return rules(status).validate();</span>
+    }
+
+    /** Clears what belongs to the previous PO: removed rows, attachments, then resetOthers(). */
+    private void clearEditState() {
+<span class="fc" id="L528">        paDetailRemoved.clear();</span>
+<span class="fc" id="L529">        Attachments().reset();</span>
+<span class="fc" id="L530">        resetOthers();</span>
+<span class="fc" id="L531">    }</span>
+
+    @Override
+    public void saveComplete() {
+        //the removed rows are gone from the database now
+<span class="fc" id="L536">        paDetailRemoved.clear();</span>
+<span class="fc" id="L537">    }</span>
+
+    @Override
+    public String getSourceCode() {
+<span class="fc" id="L541">        return SOURCE_CODE;</span>
+    }
+
+    @Override
+    public Model_PO_Master Master() {
+<span class="fc" id="L546">        return (Model_PO_Master) poMaster;</span>
+    }
+
+    @Override
+    public Model_PO_Detail Detail(int row) {
+<span class="fc" id="L551">        return (Model_PO_Detail) paDetail.get(row);</span>
+    }
+
+    // =====================================================================
+    // Detail grid (shared by all industries; rules come from the validator)
+    // =====================================================================
+    /** Adds a row when the last row has an item. */
+    public JSONObject AddDetail() throws CloneNotSupportedException {
+<span class="fc" id="L559">        JSONObject loJSON = rules().validateCanAddDetail();</span>
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L561">            return result(loJSON);</span>
+        }
+<span class="fc" id="L563">        return result(addDetail());</span>
+    }
+
+    /**
+     * Removes a detail row while adding or editing the PO.
+     *
+     * &lt;p&gt;
+     * A row that is already saved goes to the removed list
+     * ({@link #DetailRemove(int)}, {@link #getDetailRemovedCount()}), so the
+     * validator and the source documents (stock requests, quotations) can
+     * release what it held. On save the remaining rows are renumbered and the
+     * framework deletes the leftover saved rows from PO_Detail.&lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Leaves one empty row when the last row is removed, so the grid always
+     * has a row to type in.&lt;/p&gt;
+     */
+    public JSONObject RemoveDetail(int row) throws CloneNotSupportedException {
+<span class="pc bpc" id="L581" title="1 of 4 branches missed.">        if (getEditMode() != EditMode.ADDNEW &amp;&amp; getEditMode() != EditMode.UPDATE) {</span>
+<span class="fc" id="L582">            return result(errorJSON(&quot;Invalid edit mode detected.&quot;));</span>
+        }
+<span class="fc bfc" id="L584" title="All 4 branches covered.">        if (row &lt; 0 || row &gt;= getDetailCount()) {</span>
+<span class="fc" id="L585">            return result(errorJSON(&quot;Invalid row number.&quot;));</span>
+        }
+
+<span class="fc" id="L588">        Model loItem = Detail().get(row);</span>
+<span class="fc bfc" id="L589" title="All 2 branches covered.">        if (loItem.getEditMode() != EditMode.ADDNEW) {</span>
+<span class="fc" id="L590">            paDetailRemoved.add(loItem);</span>
+        }
+<span class="fc" id="L592">        Detail().remove(row);</span>
+
+<span class="fc bfc" id="L594" title="All 2 branches covered.">        if (getDetailCount() == 0) {</span>
+<span class="fc" id="L595">            JSONObject loJSON = addDetail();</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L597">                return result(loJSON);</span>
+            }
+        }
+<span class="fc" id="L600">        return result(successJSON());</span>
+    }
+
+    public int getDetailRemovedCount() {
+<span class="fc" id="L604">        return paDetailRemoved.size();</span>
+    }
+
+    public Model_PO_Detail DetailRemove(int row) {
+<span class="fc" id="L608">        return (Model_PO_Detail) paDetailRemoved.get(row);</span>
+    }
+
+    /** Quantity check: &quot;tableRow&quot; of the first zero line, &quot;warning&quot; &quot;true&quot; when all are zero. */
+    public JSONObject isDetailHasZeroQty() {
+<span class="fc" id="L613">        return result(rules().validateQuantities());</span>
+    }
+
+    /** Status label for the screen (e.g. &quot;APPROVED&quot;, &quot;APPROVED+&quot; while pending). */
+    /** Sets the default term (supplier cleared or changed). */
+    public JSONObject resetTerm() {
+<span class="fc" id="L619">        return Master().setTermCode(PurchaseOrderStaticData.DEFAULT_TERM);</span>
+    }
+
+    public String getStatusValue() {
+<span class="fc" id="L623">        return POStatus.screenLabel(Master().getTransactionStatus());</span>
+    }
+
+    // =====================================================================
+    // Discounts and totals.
+    // Rules live in the validator; on a failed rule the field is reset to 0.
+    // =====================================================================
+    public JSONObject setDiscountRate(String fsValue) {
+<span class="fc" id="L631">        return applyAmount(fsValue, lnValue -&gt; rules().validateDiscountRate(lnValue),</span>
+<span class="fc" id="L632">                lnValue -&gt; Master().setDiscount(lnValue));</span>
+    }
+
+    public JSONObject setDiscountAmount(String fsValue) {
+<span class="fc" id="L636">        return applyAmount(fsValue, lnValue -&gt; rules().validateDiscountAmount(lnValue),</span>
+<span class="fc" id="L637">                lnValue -&gt; Master().setAdditionalDiscount(lnValue));</span>
+    }
+
+    /** Rule for an amount entry (see applyAmount). */
+    @FunctionalInterface
+    protected interface AmountRule {
+
+        JSONObject check(double fnValue);
+    }
+
+    /**
+     * Parses the entry, checks its rule, sets it, and checks the resulting net
+     * total. On any failure the field is set back to 0.
+     */
+    protected JSONObject applyAmount(String fsValue, AmountRule foRule, Consumer&lt;Double&gt; foSetter) {
+        double lnValue;
+        try {
+<span class="pc bpc" id="L654" title="1 of 4 branches missed.">            lnValue = fsValue == null || fsValue.trim().isEmpty()</span>
+                    ? 0.0
+<span class="fc" id="L656">                    : new BigDecimal(fsValue.replace(&quot;,&quot;, &quot;&quot;).trim()).doubleValue();</span>
+<span class="fc" id="L657">        } catch (NumberFormatException ex) {</span>
+<span class="fc" id="L658">            return result(resetAmount(foSetter, errorJSON(&quot;Invalid amount: &quot; + fsValue)));</span>
+<span class="fc" id="L659">        }</span>
+
+<span class="fc" id="L661">        JSONObject loJSON = foRule.check(lnValue);</span>
+<span class="fc bfc" id="L662" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L663">            return result(resetAmount(foSetter, loJSON));</span>
+        }
+
+<span class="fc" id="L666">        foSetter.accept(lnValue);</span>
+<span class="fc" id="L667">        computeNetTotal();</span>
+
+<span class="fc" id="L669">        loJSON = rules().validateNetTotal();</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L671">            return result(resetAmount(foSetter, loJSON));</span>
+        }
+<span class="fc" id="L673">        return result(loJSON);</span>
+    }
+
+    private JSONObject resetAmount(Consumer&lt;Double&gt; foSetter, JSONObject foError) {
+<span class="fc" id="L677">        foSetter.accept(PurchaseOrderStaticData.default_value_double);</span>
+<span class="fc" id="L678">        computeNetTotal();</span>
+<span class="fc" id="L679">        return foError;</span>
+    }
+
+    /** Net total = total - total x discount% - discount amount (4 decimals). */
+    public void computeNetTotal() {
+<span class="fc" id="L684">        BigDecimal ldTotal = money(Master().getTranTotal());</span>
+<span class="fc" id="L685">        BigDecimal ldRateDiscount = ldTotal.multiply(money(Master().getDiscount()))</span>
+<span class="fc" id="L686">                .divide(HUNDRED, 4, RoundingMode.HALF_UP);</span>
+<span class="fc" id="L687">        BigDecimal ldNet = ldTotal.subtract(ldRateDiscount)</span>
+<span class="fc" id="L688">                .subtract(money(Master().getAdditionalDiscount()));</span>
+<span class="fc" id="L689">        Master().setNetTotal(ldNet.doubleValue());</span>
+<span class="fc" id="L690">    }</span>
+
+    /** Net total plus this line must stay below the limit; otherwise the line quantity goes back to 0. */
+    public JSONObject netTotalChecker(int pnRow) {
+<span class="fc" id="L694">        BigDecimal ldLine = money(Detail(pnRow).getQuantity())</span>
+<span class="fc" id="L695">                .multiply(money(Detail(pnRow).getUnitPrice()));</span>
+<span class="fc" id="L696">        JSONObject loJSON = rules().validateNetTotalWithLine(ldLine.doubleValue());</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L698">            Detail(pnRow).setQuantity(0);</span>
+<span class="fc" id="L699">            computeNetTotal();</span>
+        }
+<span class="fc" id="L701">        return result(loJSON);</span>
+    }
+
+    // =====================================================================
+    // Save rules shared by all industries (run by willSave)
+    // =====================================================================
+    /**
+     * Save rule for a CONFIRMED PO being edited: an encoder needs an approving
+     * officer. Success for any other case. Run by willSave.
+     */
+    protected JSONObject checkConfirmedEditApproval() throws SQLException, GuanzonException {
+<span class="fc bfc" id="L712" title="All 4 branches covered.">        if (PurchaseOrderStatus.CONFIRMED.equals(Master().getTransactionStatus()) &amp;&amp; pnEditMode == EditMode.UPDATE</span>
+<span class="pc bpc" id="L713" title="1 of 2 branches missed.">                &amp;&amp; poGRider.getUserLevel() &lt;= UserRight.ENCODER) {</span>
+<span class="fc" id="L714">            JSONObject loJSON = prompt().getUserApproval(poGRider);</span>
+<span class="fc bfc" id="L715" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L716">                return loJSON;</span>
+            }
+<span class="fc" id="L718">            setApproving((String) loJSON.get(&quot;sUserIDxx&quot;));</span>
+        }
+<span class="fc" id="L720">        return successJSON();</span>
+    }
+
+    /**
+     * Save rule for a RETURNED PO: it must have at least one change.
+     * Compares with the saved record, read straight from the database.
+     * Success for any other status. Run by willSave.
+     */
+    protected JSONObject checkReturnedEdit() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc bfc" id="L729" title="All 2 branches covered.">        if (!PurchaseOrderStatus.RETURNED.equals(Master().getTransactionStatus())) {</span>
+<span class="fc" id="L730">            return successJSON();</span>
+        }
+
+<span class="fc" id="L733">        Model_PO_Master loSaved = new PurchaseOrderModels(poGRider).PurchaseOrderMaster();</span>
+<span class="fc" id="L734">        JSONObject loJSON = loSaved.openRecord(Master().getTransactionNo());</span>
+<span class="fc bfc" id="L735" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L736">            return loJSON;</span>
+        }
+
+<span class="fc" id="L739">        List&lt;PurchaseOrderValidator.SavedLine&gt; laLines = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L740">        ResultSet loRS = poGRider.executeQuery(PurchaseOrderQueries.savedLines(Master().getTransactionNo()));</span>
+<span class="fc bfc" id="L741" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L742">            return errorJSON(&quot;Query execution failed.&quot;);</span>
+        }
+        try {
+<span class="fc bfc" id="L745" title="All 2 branches covered.">            while (loRS.next()) {</span>
+<span class="fc" id="L746">                laLines.add(new PurchaseOrderValidator.SavedLine(loRS.getString(&quot;sStockIDx&quot;), loRS.getDouble(&quot;nQuantity&quot;)));</span>
+            }
+        } finally {
+<span class="fc" id="L749">            MiscUtil.close(loRS);</span>
+        }
+<span class="fc" id="L751">        return rules().validateReturnedEditLines(loSaved, laLines);</span>
+    }
+
+    // =====================================================================
+    // Attachments (shared by all industries; saved by willSave / saveOthers)
+    // =====================================================================
+    public void resetattachment() {
+<span class="fc" id="L758">        Attachments().reset();</span>
+<span class="fc" id="L759">    }</span>
+
+    public TransactionAttachment TransactionAttachmentList(int row) {
+<span class="fc" id="L762">        return Attachments().get(row);</span>
+    }
+
+    public int getTransactionAttachmentCount() {
+<span class="fc" id="L766">        return Attachments().getCount();</span>
+    }
+
+    public JSONObject addAttachment() throws SQLException, GuanzonException {
+<span class="fc" id="L770">        return result(Attachments().add());</span>
+    }
+
+    public int addAttachment(String fFileName) throws SQLException, GuanzonException {
+<span class="fc" id="L774">        return Attachments().add(fFileName, Master().getTransactionNo());</span>
+    }
+
+    public JSONObject removeAttachment(int fnRow) throws GuanzonException, SQLException {
+<span class="fc" id="L778">        return result(Attachments().remove(fnRow));</span>
+    }
+
+    public void copyFile(String fsPath) {
+<span class="fc" id="L782">        result(Attachments().copyToTemp(fsPath));</span>
+<span class="fc" id="L783">    }</span>
+
+    public JSONObject loadAttachments() throws SQLException, GuanzonException {
+<span class="pc bpc" id="L786" title="1 of 2 branches missed.">        return result(Attachments().load(Master().getTransactionNo(), Master().getEditMode() == EditMode.UPDATE));</span>
+    }
+
+    /** @deprecated use {@code Attachments().upload(row, originalFileName)}; instance and access are not needed. */
+    @Deprecated
+    public JSONObject uploadCASAttachments(GRiderCAS instance, String access, int fnRow, String fsOriginalFileName) throws Exception {
+<span class="fc" id="L792">        return result(Attachments().upload(fnRow, fsOriginalFileName));</span>
+    }
+
+    /** Error when the file name is already used by a saved attachment. */
+    public JSONObject checkExistingFileName(String fsFileName) throws SQLException, GuanzonException {
+<span class="fc bfc" id="L797" title="All 2 branches covered.">        if (Attachments().isFileNameUsed(fsFileName)) {</span>
+<span class="fc" id="L798">            return result(errorJSON(&quot;File name already exist in database.\nTry changing the file name to upload.&quot;));</span>
+        }
+<span class="fc" id="L800">        return result(successJSON());</span>
+    }
+
+    private PurchaseOrderAttachments poAttachments;
+
+    protected PurchaseOrderAttachments createAttachments() {
+<span class="fc" id="L806">        return new PurchaseOrderAttachments(poGRider, getSourceCode());</span>
+    }
+
+    public PurchaseOrderAttachments Attachments() {
+<span class="fc bfc" id="L810" title="All 2 branches covered.">        if (poAttachments == null) {</span>
+<span class="fc" id="L811">            poAttachments = createAttachments();</span>
+        }
+<span class="fc" id="L813">        return poAttachments;</span>
+    }
+
+    // =====================================================================
+    // Audit trail (shared by all industries; the history screens that use
+    // it stay in the industry controller)
+    // =====================================================================
+    public List&lt;String&gt; getApprover() throws SQLException {
+<span class="fc" id="L821">        return Audit().getApprovers(Master().getTransactionNo());</span>
+    }
+
+    public String getSysUser(String fsId) throws SQLException, GuanzonException {
+<span class="fc" id="L825">        return Audit().getSysUserName(fsId);</span>
+    }
+
+    public JSONObject getEntryBy() throws SQLException, GuanzonException {
+<span class="fc" id="L829">        return result(Audit().getEntryBy(Master().getTable(), Master().getTransactionNo()));</span>
+    }
+
+    public JSONObject getConfirmedBy() throws SQLException, GuanzonException {
+<span class="fc" id="L833">        return result(Audit().getConfirmedBy(Master().getTransactionNo()));</span>
+    }
+
+    private PurchaseOrderAudit poAudit;
+
+    protected PurchaseOrderAudit createAudit() {
+<span class="fc" id="L839">        return new PurchaseOrderAudit(poGRider, getSourceCode());</span>
+    }
+
+    public PurchaseOrderAudit Audit() {
+<span class="fc bfc" id="L843" title="All 2 branches covered.">        if (poAudit == null) {</span>
+<span class="fc" id="L844">            poAudit = createAudit();</span>
+        }
+<span class="fc" id="L846">        return poAudit;</span>
+    }
+
+    // =====================================================================
+    // Lookups
+    // =====================================================================
+    /** Inventory type of the PO's industry + category; null when not found. */
+    public String getInventoryTypeCode() throws SQLException {
+<span class="fc" id="L854">        ResultSet loRS = poGRider.executeQuery(PurchaseOrderQueries.inventoryType(Master().getIndustryID(), Master().getCategoryCode()));</span>
+<span class="fc bfc" id="L855" title="All 2 branches covered.">        if (loRS == null) {</span>
+<span class="fc" id="L856">            return null;</span>
+        }
+        try {
+<span class="fc bfc" id="L859" title="All 2 branches covered.">            return loRS.next() ? loRS.getString(&quot;sInvTypCd&quot;) : null;</span>
+        } finally {
+<span class="fc" id="L861">            MiscUtil.close(loRS);</span>
+        }
+    }
+
+    // =====================================================================
+    // Searches shared by all industries
+    // =====================================================================
+    public JSONObject SearchBranch(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L869">        return result(Search().branch(value, byCode));</span>
+    }
+
+    public JSONObject SearchIndustry(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L873">        return result(Search().industry(value, byCode));</span>
+    }
+
+    public JSONObject SearchCategory(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L877">        return result(Search().category(value, byCode));</span>
+    }
+
+    public JSONObject SearchTerm(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L881">        return result(Search().term(value, byCode));</span>
+    }
+
+    public JSONObject SearchBarcode(String value, boolean byCode, int row, boolean hasNoSupplier)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L886">        return result(Search().inventory(value, byCode, row, hasNoSupplier, true, RecordStatus.ACTIVE, &quot;Model: &quot;, false));</span>
+    }
+
+    public JSONObject SearchBarcodeDescription(String value, boolean byCode, int row, boolean hasNoSupplier)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L891">        return result(Search().inventory(value, byCode, row, hasNoSupplier, true, RecordStatus.ACTIVE, &quot;Barcode: &quot;, false));</span>
+    }
+
+    /** Includes inactive models (record statuses 1, 2, 3) and copies the brand. */
+    public JSONObject SearchModel(String value, boolean byCode, int row, boolean hasNoSupplier) throws SQLException, GuanzonException {
+<span class="fc" id="L896">        return result(Search().inventory(value, byCode, row, hasNoSupplier, true, &quot;123&quot;, &quot;Barcode: &quot;, true));</span>
+    }
+
+    public JSONObject SearchSupplier(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L900">        return result(Search().supplier(value, byCode));</span>
+    }
+
+    public JSONObject SearchCompany(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L904">        return result(Search().company(value, byCode));</span>
+    }
+
+    public JSONObject SearchDestination(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L908">        return result(Search().destination(value, byCode));</span>
+    }
+
+    public JSONObject SearchDepartment(String value, boolean byCode) throws SQLException, GuanzonException {
+<span class="fc" id="L912">        return result(Search().department(value, byCode));</span>
+    }
+
+    public JSONObject SearchBrand(String value, boolean byCode, int row) throws SQLException, GuanzonException {
+<span class="fc" id="L916">        return result(Search().brand(value, byCode, row));</span>
+    }
+
+    // =====================================================================
+    // Auto-suggest: the lists (Suggestions()) and loading a picked row by
+    // its key, applied like the matching Search... method
+    // =====================================================================
+    public JSONObject SelectSupplier(String clientId) throws SQLException, GuanzonException {
+<span class="fc" id="L924">        return result(Search().pickSupplier(clientId));</span>
+    }
+
+    public JSONObject SelectTerm(String termCode) throws SQLException, GuanzonException {
+<span class="fc" id="L928">        return result(Search().pickTerm(termCode));</span>
+    }
+
+    public JSONObject SelectDestination(String branchCode) throws SQLException, GuanzonException {
+<span class="fc" id="L932">        return result(Search().pickDestination(branchCode));</span>
+    }
+
+    /** Item picked in the barcode field (same duplicate message as SearchBarcode). */
+    public JSONObject SelectBarcode(String stockId, int row) throws SQLException, GuanzonException {
+<span class="fc" id="L937">        return result(Search().pickInventory(stockId, row, &quot;Model: &quot;, false));</span>
+    }
+
+    /** Item picked in the description field (same duplicate message as SearchBarcodeDescription). */
+    public JSONObject SelectBarcodeDescription(String stockId, int row) throws SQLException, GuanzonException {
+<span class="fc" id="L942">        return result(Search().pickInventory(stockId, row, &quot;Barcode: &quot;, false));</span>
+    }
+
+    private PurchaseOrderSuggestions poSuggestions;
+
+    protected PurchaseOrderSuggestions createSuggestions() {
+<span class="fc" id="L948">        return new PurchaseOrderSuggestions(this,</span>
+<span class="nc" id="L949">                () -&gt; poGRider,</span>
+<span class="nc" id="L950">                () -&gt; new ParamControllers(poGRider, logwrapr),</span>
+<span class="nc" id="L951">                () -&gt; new InvControllers(poGRider, logwrapr),</span>
+<span class="nc" id="L952">                () -&gt; new ClientControllers(poGRider, logwrapr));</span>
+    }
+
+    /** Auto-suggest lists for the searchable fields. */
+    public PurchaseOrderSuggestions Suggestions() {
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        if (poSuggestions == null) {</span>
+<span class="fc" id="L958">            poSuggestions = createSuggestions();</span>
+        }
+<span class="fc" id="L960">        return poSuggestions;</span>
+    }
+
+    // =====================================================================
+    // Search helper: override createSearch() to give
+    // an industry its own version
+    // =====================================================================
+    private PurchaseOrderSearch poSearch;
+
+    protected PurchaseOrderSearch createSearch() {
+<span class="fc" id="L970">        return new PurchaseOrderSearch(this,</span>
+<span class="nc" id="L971">                () -&gt; new ParamControllers(poGRider, logwrapr),</span>
+<span class="nc" id="L972">                () -&gt; new InvControllers(poGRider, logwrapr),</span>
+<span class="nc" id="L973">                () -&gt; new ClientControllers(poGRider, logwrapr));</span>
+    }
+
+    public PurchaseOrderSearch Search() {
+<span class="fc bfc" id="L977" title="All 2 branches covered.">        if (poSearch == null) {</span>
+<span class="fc" id="L978">            poSearch = createSearch();</span>
+        }
+<span class="fc" id="L980">        return poSearch;</span>
+    }
+
+    // =====================================================================
+    // Shared helpers
+    // =====================================================================
+    /** Validator loaded with the master, details and industry context for the given status. */
+    protected PurchaseOrderValidator rules(String fsStatus) {
+<span class="fc" id="L988">        PurchaseOrderValidator loRules = createValidator();</span>
+<span class="fc" id="L989">        loRules.setApplicationDriver(poGRider);</span>
+<span class="fc" id="L990">        loRules.setTransactionStatus(fsStatus);</span>
+<span class="fc" id="L991">        loRules.setMaster(Master());</span>
+<span class="fc" id="L992">        loRules.setDetail(new ArrayList&lt;Object&gt;(paDetail));</span>
+<span class="fc" id="L993">        loRules.setRemovedDetail(new ArrayList&lt;Object&gt;(paDetailRemoved));</span>
+<span class="fc" id="L994">        loRules.setActiveAttachmentCount(Attachments().getActiveCount());</span>
+<span class="fc" id="L995">        prepareRules(loRules);</span>
+<span class="fc" id="L996">        return loRules;</span>
+    }
+
+    /** Validator for entry checks while editing (uses the current status). */
+    protected PurchaseOrderValidator rules() {
+<span class="fc" id="L1001">        return rules(Master().getTransactionStatus());</span>
+    }
+
+    /**
+     * Basic save preparation any industry can call from willSave: assigns the
+     * transaction number to a new PO, drops detail rows with no item or no
+     * quantity, and numbers the remaining rows.
+     */
+    protected void prepareDetailsForSave() throws SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">        if (Master().getEditMode() == EditMode.ADDNEW) {</span>
+<span class="fc" id="L1011">            Master().setTransactionNo(Master().getNextCode());</span>
+        }
+
+<span class="fc" id="L1014">        Iterator&lt;Model&gt; loIterator = Detail().iterator();</span>
+<span class="fc bfc" id="L1015" title="All 2 branches covered.">        while (loIterator.hasNext()) {</span>
+<span class="fc" id="L1016">            Model loItem = loIterator.next();</span>
+<span class="fc" id="L1017">            Object loQuantity = loItem.getValue(&quot;nQuantity&quot;);</span>
+<span class="fc" id="L1018">            Object loStockId = loItem.getValue(&quot;sStockIDx&quot;);</span>
+<span class="pc bpc" id="L1019" title="1 of 4 branches missed.">            if (loQuantity == null || loStockId == null</span>
+<span class="fc bfc" id="L1020" title="All 2 branches covered.">                    || ((String) loStockId).isEmpty()</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">                    || ((Number) loQuantity).doubleValue() &lt;= 0.00) {</span>
+<span class="fc" id="L1022">                loIterator.remove();</span>
+            }
+<span class="fc" id="L1024">        }</span>
+
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">        for (int lnCtr = 0; lnCtr &lt;= getDetailCount() - 1; lnCtr++) {</span>
+<span class="fc" id="L1027">            Detail(lnCtr).setTransactionNo(Master().getTransactionNo());</span>
+<span class="fc" id="L1028">            Detail(lnCtr).setEntryNo(lnCtr + 1);</span>
+<span class="fc" id="L1029">            Detail(lnCtr).setModifiedDate(poGRider.getServerDate());</span>
+        }
+<span class="fc" id="L1031">    }</span>
+
+    /**
+     * Checks the current user's authority for the purchasing module and, if
+     * needed, asks an approving officer.
+     */
+    public JSONObject seekApproval() throws SQLException, GuanzonException {
+        //authority of the current user for the purchasing module
+        //(&quot;cas-purchasing&quot; is the module key in the user rights, not the Maven project)
+<span class="fc" id="L1040">        ActionAuthManager loAuth = new ActionAuthManager(poGRider, &quot;cas-purchasing&quot;);</span>
+<span class="fc" id="L1041">        JSONObject loJSON = loAuth.isAuthorized();</span>
+<span class="fc bfc" id="L1042" title="All 2 branches covered.">        if (&quot;true&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L1043">            return successJSON();</span>
+        }
+
+        //get authorization from an approving officer
+<span class="fc" id="L1047">        prompt().warning((String) loJSON.get(&quot;warning&quot;), &quot;Authorization Required&quot;);</span>
+<span class="fc" id="L1048">        loJSON = prompt().getUserApproval(poGRider);</span>
+<span class="fc bfc" id="L1049" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L1050">            return loJSON;</span>
+        }
+
+        //the approving officer must be authorized too
+<span class="fc" id="L1054">        String lsUserId = loJSON.get(&quot;sUserIDxx&quot;).toString();</span>
+<span class="fc" id="L1055">        int lnUserLevel = Integer.parseInt(loJSON.get(&quot;nUserLevl&quot;).toString());</span>
+<span class="fc" id="L1056">        loJSON = loAuth.isAuthorized(lsUserId, lnUserLevel);</span>
+<span class="fc bfc" id="L1057" title="All 2 branches covered.">        if (!&quot;true&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L1058">            prompt().warning((String) loJSON.get(&quot;warning&quot;), &quot;Authorization Required&quot;);</span>
+<span class="fc" id="L1059">            return errorJSON(&quot;User is not an authorized approving officer..&quot;);</span>
+        }
+<span class="fc" id="L1061">        return successJSON();</span>
+    }
+
+    /**
+     * Authorization gate for a status change.
+     *
+     * Returns:
+     *  - &quot;success&quot;: caller may proceed. foCheck[0] holds the MatrixAuthChecker
+     *    to postAuth() after the status change (null when no matrix applies).
+     *  - &quot;matrix&quot;: an authorization request was filed and the transaction was
+     *    tagged with the pending status letter (64 + status code).
+     *  - &quot;error&quot;: validation or authorization failed.
+     */
+    protected JSONObject authorizeStatus(String fsStatus, String fsPendingRemarks, String fsEvent, MatrixAuthChecker[] foCheck)
+            throws ParseException, SQLException, GuanzonException, CloneNotSupportedException {
+<span class="fc" id="L1076">        foCheck[0] = null;</span>
+
+<span class="fc bfc" id="L1078" title="All 2 branches covered.">        if (pbWthParent) {</span>
+<span class="fc" id="L1079">            return successJSON();</span>
+        }
+
+        //validator
+<span class="fc" id="L1083">        JSONObject loJSON = isEntryOkay(fsStatus);</span>
+<span class="fc bfc" id="L1084" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L1085">            return loJSON;</span>
+        }
+
+        //get the matrix return from isEntryOkay
+<span class="fc" id="L1089">        JSONArray loMatrix = (JSONArray) loJSON.get(&quot;matrix&quot;);</span>
+
+        //there are no authorization event request
+<span class="fc bfc" id="L1092" title="All 2 branches covered.">        if (loMatrix == null) {</span>
+<span class="fc" id="L1093">            return seekApproval();</span>
+        }
+
+<span class="fc" id="L1096">        MatrixAuthChecker loCheck = new MatrixAuthChecker(poGRider, SOURCE_CODE, Master().getTransactionNo());</span>
+<span class="fc" id="L1097">        loJSON = loCheck.loadAuth();</span>
+<span class="fc bfc" id="L1098" title="All 2 branches covered.">        if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L1099">            return loJSON;</span>
+        }
+<span class="fc" id="L1101">        foCheck[0] = loCheck;</span>
+
+        //already approved by all authorizing personnel
+<span class="fc bfc" id="L1104" title="All 2 branches covered.">        if (loCheck.isAuthOkay()) {</span>
+<span class="fc" id="L1105">            return successJSON();</span>
+        }
+
+        //authorization request allows system approval
+<span class="fc bfc" id="L1109" title="All 2 branches covered.">        if (loCheck.isAllowSys()) {</span>
+<span class="fc" id="L1110">            String lsAuthType = (String) ((JSONObject) loMatrix.get(0)).get(&quot;sAuthType&quot;);</span>
+
+            //check if current user is authorized to approve this transaction
+<span class="fc" id="L1113">            loJSON = loCheck.authTrans(lsAuthType, poGRider.getUserID());</span>
+<span class="fc bfc" id="L1114" title="All 2 branches covered.">            if (!&quot;success&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+                //request approval from an approving officer
+<span class="fc" id="L1116">                loJSON = prompt().getUserApproval(poGRider);</span>
+<span class="fc bfc" id="L1117" title="All 2 branches covered.">                if (!isSuccess(loJSON)) {</span>
+<span class="fc" id="L1118">                    return loJSON;</span>
+                }
+
+                //authorize the APPROVING OFFICER, not the current user
+<span class="fc" id="L1122">                String lsApproverID = (String) loJSON.get(&quot;sUserIDxx&quot;);</span>
+<span class="fc" id="L1123">                loJSON = loCheck.authTrans(lsAuthType, lsApproverID);</span>
+<span class="fc bfc" id="L1124" title="All 2 branches covered.">                if (!&quot;success&quot;.equalsIgnoreCase((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="fc" id="L1125">                    return loJSON;</span>
+                }
+            }
+        }
+
+<span class="fc bfc" id="L1130" title="All 2 branches covered.">        if (loCheck.isAuthOkay()) {</span>
+<span class="fc" id="L1131">            return successJSON();</span>
+        }
+
+        //still pending: tag the transaction with the pending status letter
+<span class="fc" id="L1135">        final String lsPending = POStatus.of(fsStatus).getPendingCode();</span>
+<span class="fc" id="L1136">        loJSON = inTransaction(fsEvent, true, () -&gt; statusChange(poMaster.getTable(),</span>
+<span class="fc" id="L1137">                (String) poMaster.getValue(&quot;sTransNox&quot;), fsPendingRemarks, lsPending, false, true));</span>
+
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">        if (isSuccess(loJSON)) {</span>
+<span class="fc" id="L1140">            loJSON.put(&quot;result&quot;, &quot;matrix&quot;);</span>
+        }
+<span class="fc" id="L1142">        return loJSON;</span>
+    }
+
+    /** Unit of work executed inside a DB transaction. */
+    @FunctionalInterface
+    protected interface TxWork {
+
+        JSONObject run() throws Exception;
+    }
+
+    /**
+     * Runs work inside begin/commit. Any non-success result or exception rolls
+     * back. When fbOwnTrans is false (a parent owns the transaction) nothing is
+     * begun, committed, or rolled back here.
+     */
+    protected JSONObject inTransaction(String fsEvent, boolean fbOwnTrans, TxWork foWork) {
+<span class="fc" id="L1158">        boolean lbStarted = false;</span>
+        try {
+<span class="fc bfc" id="L1160" title="All 2 branches covered.">            if (fbOwnTrans) {</span>
+<span class="fc" id="L1161">                poGRider.beginTrans(&quot;UPDATE STATUS&quot;, fsEvent, SOURCE_CODE, Master().getTransactionNo());</span>
+<span class="fc" id="L1162">                lbStarted = true;</span>
+            }
+
+<span class="fc" id="L1165">            JSONObject loJSON = foWork.run();</span>
+<span class="fc bfc" id="L1166" title="All 2 branches covered.">            if (!isSuccess(loJSON)) {</span>
+<span class="pc bpc" id="L1167" title="1 of 2 branches missed.">                if (lbStarted) {</span>
+<span class="fc" id="L1168">                    safeRollback();</span>
+                }
+<span class="fc bfc" id="L1170" title="All 2 branches covered.">                return loJSON != null ? loJSON : errorJSON(&quot;Unknown error during &quot; + fsEvent + &quot;.&quot;);</span>
+            }
+
+<span class="fc bfc" id="L1173" title="All 2 branches covered.">            if (lbStarted) {</span>
+<span class="fc" id="L1174">                poGRider.commitTrans();</span>
+            }
+<span class="fc" id="L1176">            return loJSON;</span>
+<span class="fc" id="L1177">        } catch (Exception ex) {</span>
+<span class="fc" id="L1178">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, MiscUtil.getException(ex), ex);</span>
+<span class="pc bpc" id="L1179" title="1 of 2 branches missed.">            if (lbStarted) {</span>
+<span class="fc" id="L1180">                safeRollback();</span>
+            }
+<span class="fc" id="L1182">            return errorJSON(MiscUtil.getException(ex));</span>
+        }
+    }
+
+    protected void safeRollback() {
+        try {
+<span class="fc" id="L1188">            poGRider.rollbackTrans();</span>
+<span class="fc" id="L1189">        } catch (Exception ex) {</span>
+<span class="fc" id="L1190">            Logger.getLogger(getClass().getName()).log(Level.SEVERE, &quot;Rollback failed&quot;, ex);</span>
+<span class="fc" id="L1191">        }</span>
+<span class="fc" id="L1192">    }</span>
+
+    /** Sets the inherited poJSON (for code that still reads it) and returns the same result. */
+    protected JSONObject result(JSONObject foResult) {
+<span class="fc" id="L1196">        poJSON = foResult;</span>
+<span class="fc" id="L1197">        return foResult;</span>
+    }
+
+    protected static JSONObject successJSON() {
+<span class="fc" id="L1201">        return Results.success();</span>
+    }
+
+    protected static JSONObject successJSON(String fsMessage) {
+<span class="fc" id="L1205">        return Results.success(fsMessage);</span>
+    }
+
+    protected static JSONObject errorJSON(String fsMessage) {
+<span class="fc" id="L1209">        return Results.error(fsMessage);</span>
+    }
+
+    /** Number as BigDecimal for money math; 0 when null. */
+    protected static BigDecimal money(Number fnValue) {
+<span class="fc bfc" id="L1214" title="All 2 branches covered.">        if (fnValue == null) {</span>
+<span class="fc" id="L1215">            return BigDecimal.ZERO;</span>
+        }
+<span class="fc bfc" id="L1217" title="All 2 branches covered.">        if (fnValue instanceof BigDecimal) {</span>
+<span class="fc" id="L1218">            return (BigDecimal) fnValue;</span>
+        }
+<span class="fc" id="L1220">        return BigDecimal.valueOf(fnValue.doubleValue());</span>
+    }
+
+    protected static boolean isSuccess(JSONObject foJSON) {
+<span class="fc" id="L1224">        return Results.isSuccess(foJSON);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -291,7 +291,38 @@ public class PurchaseOrderGeneral extends PurchaseOrder {
         return result(loadPurchaseOrders(fsSupplierID, fsReferID, PurchaseOrderStatus.APPROVED));
     }
 
-    private JSONObject loadPurchaseOrders(String fsSupplierID, String fsReferID, String fsPendingCodes) throws SQLException, GuanzonException {
+    /**
+     * The PO list for a screen table, read with one query: "data" holds one
+     * row per PO (sTransNox, dTransact, sCompnyNm, sBranchNm, cTranStat).
+     * Same filters and order as {@link #getPurchaseOrder}, without opening each
+     * PO (no POMaster list), so it is quick enough for the screen thread.
+     */
+    @SuppressWarnings("unchecked")
+    public JSONObject getPurchaseOrderList(String fsSupplierID, String fsReferID) throws SQLException {
+        JSONArray laRows = new JSONArray();
+        ResultSet loRS = poGRider.executeQuery(purchaseOrderListSQL(fsSupplierID, fsReferID, psTranStat));
+        if (loRS == null) {
+            return result(errorJSON("Query execution failed."));
+        }
+        try {
+            while (loRS.next()) {
+                JSONObject loRow = new JSONObject();
+                loRow.put("sTransNox", loRS.getString("sTransNox"));
+                loRow.put("dTransact", loRS.getDate("dTransact"));
+                loRow.put("sCompnyNm", loRS.getString("sCompnyNm"));
+                loRow.put("sBranchNm", loRS.getString("sBranchNm"));
+                loRow.put("cTranStat", loRS.getString("cTranStat"));
+                laRows.add(loRow);
+            }
+        } finally {
+            MiscUtil.close(loRS);
+        }
+        JSONObject loJSON = successJSON("Record loaded successfully.");
+        loJSON.put("data", laRows);
+        return result(loJSON);
+    }
+
+    private String purchaseOrderListSQL(String fsSupplierID, String fsReferID, String fsPendingCodes) {
         String lsSQL = MiscUtil.addCondition(PurchaseOrderQueries.purchaseOrderList(), String.join(" AND ",
                 "a.sIndstCdx = " + SQLUtil.toSQL(Master().getIndustryID()),
                 "a.sCompnyID = " + SQLUtil.toSQL(Master().getCompanyID()),
@@ -302,7 +333,11 @@ public class PurchaseOrderGeneral extends PurchaseOrder {
         lsSQL += branchFilter("a.sBranchCd");
         lsSQL += " ORDER BY a.dTransact, e.sCompnyNm, a.sTransNox ASC";
         LOG.log(Level.FINE, lsSQL);
+        return lsSQL;
+    }
 
+    private JSONObject loadPurchaseOrders(String fsSupplierID, String fsReferID, String fsPendingCodes) throws SQLException, GuanzonException {
+        String lsSQL = purchaseOrderListSQL(fsSupplierID, fsReferID, fsPendingCodes);
         paPOMaster = new ArrayList<>();
         ResultSet loRS = poGRider.executeQuery(lsSQL);
         if (loRS == null) {
@@ -383,6 +418,11 @@ public class PurchaseOrderGeneral extends PurchaseOrder {
 
     public JSONObject SearchProject(String value) throws SQLException, GuanzonException {
         return result(Search().project(value));
+    }
+
+    /** Project picked from the auto-suggest list. */
+    public JSONObject SelectProject(String projectCode) throws SQLException, GuanzonException {
+        return result(Search().pickProject(projectCode));
     }
 
     public JSONObject SearchCategoryReports(String value, boolean byCode) throws SQLException, GuanzonException {

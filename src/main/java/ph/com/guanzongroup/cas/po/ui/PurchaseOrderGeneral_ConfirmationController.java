@@ -7,6 +7,8 @@ package ph.com.guanzongroup.cas.po.ui;
 import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrder;
 import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrderDetail;
 import ph.com.guanzongroup.cas.po.ui.utility.CustomCommonUtil;
+import ph.com.guanzongroup.cas.po.ui.utility.ScreenShortcuts;
+import ph.com.guanzongroup.cas.po.ui.utility.SearchFields;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -83,6 +85,7 @@ import ph.com.guanzongroup.cas.po.controller.PurchaseOrderGeneral;
 import ph.com.guanzongroup.cas.po.services.PurchaseOrderControllers;
 import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
 import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.ParseException;
 import ph.com.guanzongroup.cas.po.ui.model.ModelPOAttachment;
@@ -118,6 +121,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
     private String psCompanyID = "";
     private String psCategoryID = "";
     private String psSupplierID = "";
+    private String psSupplierName = ""; //text shown for psSupplierID
     private String psReferID = "";
     private String psTransNo = "";
     private String psOldDate = "";
@@ -215,6 +219,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
     }
 
     /** What the Close button does (e.g. remove the tab); default: close the window. */
+    @Override
     public void setOnClose(Runnable foOnClose) {
         poOnClose = foOnClose;
     }
@@ -268,6 +273,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         initTextFieldFocus();
         initTextAreaFocus();
         initTextFieldKeyPressed();
+        initScreenKeys();
         initDatePickerActions();
         initTextFieldPattern();
         initCheckBoxActions();
@@ -296,7 +302,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
     private void loadRecordMaster() {
         try {
             tfTransactionNo.setText(po().Master().getTransactionNo());
-            lblTransactionStatus.setText(po().getStatusValue());
+            lblTransactionStatus.setText(statusText());
             dpTransactionDate.setValue(CustomCommonUtil.parseDateStringToLocalDate(SQLUtil.dateFormat(po().Master().getTransactionDate(), SQLUtil.FORMAT_SHORT_DATE)));
             tfSupplier.setText(po().Master().Supplier().getCompanyName() != null ? po().Master().Supplier().getCompanyName() : "");
             tfDestination.setText(po().Master().Branch().getBranchName() != null ? po().Master().Branch().getBranchName() : "");
@@ -706,10 +712,92 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         }
     }
 
+    /** Searchable-field marks, button shortcuts and the unsaved-changes guard. */
+    private void initScreenKeys() {
+        SearchFields.mark(tfSearchSupplier, tfDestination, tfReferenceNo, tfTerm);
+        ScreenShortcuts.tabOutOf(taRemarks);
+        ScreenShortcuts.on(AnchorMain)
+                .add(btnUpdate, "Shortcut+E")
+                .add(btnSave, "Shortcut+S")
+                .add(btnCancel, "Esc")
+                .add(btnConfirm, "F10")
+                .add(btnPrint, "Shortcut+P")
+                .add(btnRetrieve, "Shortcut+R");
+        ScreenShortcuts.guardClose(AnchorMain, this::isEditing, this::confirmDiscard);
+    }
+
+    /** Description of the PO's term; empty when no term is set. */
+    private String termText() throws SQLException, GuanzonException {
+        if (isEmpty(po().Master().getTermCode())) {
+            return "";
+        }
+        String lsTerm = po().Master().Term().getDescription();
+        return lsTerm == null ? "" : lsTerm;
+    }
+
+    private boolean isEditing() {
+        return pnEditMode == EditMode.ADDNEW || pnEditMode == EditMode.UPDATE;
+    }
+
+    /** True when there is nothing to lose, or the user agrees to discard the changes. */
+    private boolean confirmDiscard() {
+        return !isEditing()
+                || ShowMessageFX.YesNo("This purchase order has unsaved changes. Discard them?", psFormName, null);
+    }
+
+    /** cas-app asks before closing this screen's tab while a PO is new or being edited. */
+    @Override
+    public boolean hasUnsavedChanges() {
+        return isEditing();
+    }
+
+    /** PO status with the screen mode: "NEW", "OPEN (EDITING)", "OPEN". */
+    private String statusText() {
+        if (pnEditMode == EditMode.ADDNEW) {
+            return "NEW";
+        }
+        if (pnEditMode == EditMode.UPDATE) {
+            return po().getStatusValue() + " (EDITING)";
+        }
+        if (pnEditMode == EditMode.READY) {
+            return po().getStatusValue();
+        }
+        return "UNKNOWN";
+    }
+
     private void initTextFieldFocus() {
         List<TextField> loTxtField = Arrays.asList(tfReferenceNo, tfDiscountRate, tfDiscountAmount,
-                tfAdvancePRate, tfAdvancePAmount, tfOrderQuantity, tfSearchReferenceNo,tfTransactionNo);
+                tfAdvancePRate, tfAdvancePAmount, tfOrderQuantity, tfSearchReferenceNo,tfTransactionNo,
+                tfDestination, tfTerm);
         loTxtField.forEach(tf -> tf.focusedProperty().addListener(txtField_Focus));
+    }
+
+    /**
+     * Leaving Destination or Term while editing: an empty Destination goes back
+     * to the user's branch (loaded as a record); text that was typed but not
+     * searched or picked is not kept, so the field shows what will be saved.
+     */
+    private void leaveLookup(String fsFieldId, String fsValue) {
+        if (!isEditing()) {
+            return;
+        }
+        try {
+            if ("tfDestination".equals(fsFieldId)) {
+                if (fsValue == null || fsValue.trim().isEmpty()) {
+                    JSONObject loJSON = po().SelectDestination(poApp.getBranchCode());
+                    if (!"success".equals(loJSON.get("result"))) {
+                        ShowMessageFX.Warning((String) loJSON.get("message"), psFormName, null);
+                    }
+                }
+                String lsName = isEmpty(po().Master().getDestinationID()) ? "" : po().Master().Branch().getBranchName();
+                tfDestination.setText(lsName == null ? "" : lsName);
+            } else if ("tfTerm".equals(fsFieldId)) {
+                String lsTerm = isEmpty(po().Master().getTermCode()) ? "" : po().Master().Term().getDescription();
+                tfTerm.setText(lsTerm == null ? "" : lsTerm);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_ConfirmationController.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     private void initTextAreaFocus() {
@@ -781,6 +869,10 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
                     setOrderCost(lsValue);
                     loadTableDetailAndSelectedRow();
                     break;
+                case "tfDestination":
+                case "tfTerm":
+                    leaveLookup(lsTextFieldID, lsValue);
+                    break;
             }
         } else {
             loTextField.selectAll();
@@ -815,6 +907,51 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         loTxtField.forEach(tf -> tf.setOnKeyPressed(event -> txtField_KeyPressed(event)));
     }
 
+    /**
+     * Whether the field still shows the record that is loaded (its id is set
+     * and the text is what the screen displays for it), so Enter needs no search.
+     */
+    private boolean isLoadedValue(String fsFieldId, String fsText) throws SQLException, GuanzonException {
+        if (fsText == null || fsText.trim().isEmpty()) {
+            return false;
+        }
+        String lsLoaded;
+        switch (fsFieldId) {
+            case "tfReferenceNo":
+                lsLoaded = po().Master().getReference();
+                break;
+            case "tfDestination":
+                lsLoaded = isEmpty(po().Master().getDestinationID()) ? null : po().Master().Branch().getBranchName();
+                break;
+            case "tfSearchSupplier":
+                lsLoaded = isEmpty(psSupplierID) ? null : psSupplierName;
+                break;
+            case "tfTerm":
+                lsLoaded = isEmpty(po().Master().getTermCode()) ? null : po().Master().Term().getDescription();
+                break;
+            default:
+                return false;
+        }
+        return lsLoaded != null && !lsLoaded.isEmpty() && fsText.trim().equals(lsLoaded.trim());
+    }
+
+    private static boolean isEmpty(String fsValue) {
+        return fsValue == null || fsValue.isEmpty();
+    }
+
+    /** Fields whose Enter / F3 opens a search (Tab only moves on). */
+    private static boolean isSearchField(String fsFieldId) {
+        switch (fsFieldId) {
+            case "tfReferenceNo":
+            case "tfDestination":
+            case "tfSearchSupplier":
+            case "tfTerm":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void txtField_KeyPressed(KeyEvent event) {
         TextField lsTxtField = (TextField) event.getSource();
         String txtFieldID = ((TextField) event.getSource()).getId();
@@ -831,6 +968,19 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
                     case TAB:
                     case ENTER:
                     case F3:
+                        //Tab only moves to the next field; Enter and F3 open the search
+                        if (event.getCode() == TAB && isSearchField(txtFieldID)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
+                        //Enter on a field still showing its loaded record (unique id present): no search, move on.
+                        //F3 always searches.
+                        if (event.getCode() == ENTER && isSearchField(txtFieldID) && isLoadedValue(txtFieldID, lsValue)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
                         switch (txtFieldID) {
                              case "tfReferenceNo":
                                 poJSON = po().SearchProject(lsValue);
@@ -854,11 +1004,12 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
                                 poJSON = po().SearchSupplier(lsValue, false);
                                 if ("error".equals(poJSON.get("result"))) {
                                     ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfSupplier.setText("");
+                                    tfSearchSupplier.setText(""); //the filter (it cleared the PO's supplier field)
                                     break;
                                 }
                                 psSupplierID = po().Master().getSupplierID();
                                 tfSearchSupplier.setText(po().Master().Supplier().getCompanyName());
+                                psSupplierName = tfSearchSupplier.getText();
                                 loadTableMain();
                                 break;
                             case "tfTerm":
@@ -868,7 +1019,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
                                     tfTerm.setText("");
                                     break;
                                 }
-                                tfTerm.setText(po().Master().Term().getDescription());
+                                tfTerm.setText(termText());
                                 break;
 
                         }
@@ -1176,6 +1327,7 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
     }
 
     private void initButtons(int fnEditMode) {
+        lblTransactionStatus.setText(statusText());
         boolean lbShow = (pnEditMode == EditMode.UPDATE);
 
         btnClose.setVisible(!lbShow);
@@ -1246,85 +1398,66 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         }
     }
 
+    /**
+     * POs waiting for confirmation (left table). Read on the screen thread with
+     * one query (getPurchaseOrderList): it used to run on a background thread
+     * and open every PO and its supplier one by one, while the screen used the
+     * same PO and database connection.
+     */
     private void loadTableMain() {
         btnRetrieve.setDisable(true);
-        ProgressIndicator progressIndicator = new ProgressIndicator();
-        progressIndicator.setMaxHeight(50); // Set size to 200x200
-        progressIndicator.setStyle("-fx-progress-color: #FF8201;");
-        StackPane loadingPane = new StackPane(progressIndicator);
-        loadingPane.setAlignment(Pos.CENTER); // Center it
-
-        tblVwPurchaseOrder.setPlaceholder(loadingPane); // Show while loading
-        progressIndicator.setVisible(true); // Make sure it's visible
-
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                try {
-                    main_data.clear();
-                    poJSON = po().getPurchaseOrder(psSupplierID, psReferID,psTransNo);
-                    if ("success".equals(poJSON.get("result"))) {
-                        if (po().getPOMasterCount() > 0) {
-                            for (int lnCntr = 0; lnCntr <= po().getPOMasterCount() - 1; lnCntr++) {
-                                main_data.add(new ModelPurchaseOrder(
-                                        String.valueOf(lnCntr + 1),
-                                        po().POMaster(lnCntr).Supplier().getCompanyName(),
-                                        SQLUtil.dateFormat(po().POMaster(lnCntr).getTransactionDate(), SQLUtil.FORMAT_SHORT_DATE),
-                                        po().POMaster(lnCntr).getTransactionNo(),
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        ""));
-                            }
-                        } else {
-                            main_data.clear();
-                        }
+        main_data.clear();
+        try {
+            JSONObject loJSON = po().getPurchaseOrderList(psSupplierID, psReferID);
+            if ("success".equals(loJSON.get("result"))) {
+                JSONArray laRows = (JSONArray) loJSON.get("data");
+                if (laRows != null) {
+                    for (Object loItem : laRows) {
+                        JSONObject loRow = (JSONObject) loItem;
+                        Object loDate = loRow.get("dTransact");
+                        main_data.add(new ModelPurchaseOrder(
+                                String.valueOf(main_data.size() + 1),
+                                loRow.get("sCompnyNm") == null ? "" : loRow.get("sCompnyNm").toString(),
+                                loDate instanceof java.util.Date
+                                        ? SQLUtil.dateFormat((java.util.Date) loDate, SQLUtil.FORMAT_SHORT_DATE) : "",
+                                loRow.get("sTransNox") == null ? "" : loRow.get("sTransNox").toString(),
+                                "",
+                                "",
+                                "",
+                                "",
+                                "",
+                                ""));
                     }
-
-                    Platform.runLater(() -> {
-                        if (main_data.isEmpty()) {
-                            tblVwPurchaseOrder.setPlaceholder(new Label("NO RECORD TO LOAD"));
-                            tblVwPurchaseOrder.setItems(FXCollections.observableArrayList(main_data));
-                        } else {
-                            tblVwPurchaseOrder.setItems(FXCollections.observableArrayList(main_data));
-                        }
-                    });
-
-                } catch (SQLException | GuanzonException ex) {
-                    Logger.getLogger(PurchaseOrderGeneral_ConfirmationController.class
-                            .getName()).log(Level.SEVERE, null, ex);
-                }
-                return null;
-            }
-
-            @Override
-            protected void succeeded() {
-                progressIndicator.setVisible(false);
-                btnRetrieve.setDisable(false);
-                if (main_data == null || main_data.isEmpty()) {
-                    tblVwPurchaseOrder.setPlaceholder(new Label("NO RECORD TO LOAD"));
-                } else {
-                    if (pagination != null) {
-                        int pageCount = (int) Math.ceil((double) main_data.size() / pnTblMain_Page);
-                        pagination.setPageCount(pageCount);
-                        pagination.currentPageIndexProperty().addListener((obs, oldIndex, newIndex) -> createPage(newIndex.intValue()));
-                    }
-                    createPage(0);
-                    pagination.setVisible(true);
-                    pagination.setManaged(true);
-                    tblVwPurchaseOrder.toFront();
                 }
             }
+        } catch (SQLException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_ConfirmationController.class.getName()).log(Level.SEVERE, null, ex);
+        } finally {
+            btnRetrieve.setDisable(false);
+        }
+        showMainPage();
+    }
 
-            @Override
-            protected void failed() {
-                progressIndicator.setVisible(false);
-                btnRetrieve.setDisable(false);
+    private boolean pbMainPageListener;
+
+    /** First page of main_data, or "NO RECORD TO LOAD". */
+    private void showMainPage() {
+        if (main_data.isEmpty()) {
+            tblVwPurchaseOrder.setItems(FXCollections.observableArrayList());
+            tblVwPurchaseOrder.setPlaceholder(new Label("NO RECORD TO LOAD"));
+            return;
+        }
+        if (pagination != null) {
+            if (!pbMainPageListener) {
+                //added once (it was added again on every load)
+                pagination.currentPageIndexProperty().addListener((obs, oldIndex, newIndex) -> createPage(newIndex.intValue()));
+                pbMainPageListener = true;
             }
-        };
-        new Thread(task).start(); // Run task in background
+            pagination.setVisible(true);
+            pagination.setManaged(true);
+        }
+        createPage(0);
+        tblVwPurchaseOrder.toFront();
     }
 
     private Node createPage(int pageIndex) {
@@ -1564,6 +1697,10 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         }
 
         if (event.getClickCount() == 2) {
+            //opening another PO while editing loses the changes
+            if (!confirmDiscard()) {
+                return;
+            }
             ModelPurchaseOrder loSelectedPurchaseOrder = (ModelPurchaseOrder) tblVwPurchaseOrder.getSelectionModel().getSelectedItem();
             if (loSelectedPurchaseOrder != null) {
                 String lsTransactionNo = loSelectedPurchaseOrder.getIndex04();
@@ -1697,91 +1834,57 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         }
     }
     
+    /**
+     * Attachment list. Built on the screen thread: the background task only
+     * reset the image view (a screen control, which must not be changed off the
+     * screen thread) and handed the rest back to the screen thread anyway.
+     * Errors are logged now (they were silently ignored).
+     */
     private void loadTableAttachment() {
-        // Setting data to table detail
-        ProgressIndicator progressIndicator = new ProgressIndicator();
-        progressIndicator.setMaxHeight(50);
-        progressIndicator.setStyle("-fx-progress-color: #FF8201;");
-        StackPane loadingPane = new StackPane(progressIndicator);
-        loadingPane.setAlignment(Pos.CENTER);
-        tblAttachments.setPlaceholder(loadingPane);
-        progressIndicator.setVisible(true);
-
-        Label placeholderLabel = new Label("NO RECORD TO LOAD");
-        placeholderLabel.setStyle("-fx-font-size: 10px;"); // Adjust the size as needed
-
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                scaleFactor = 1.0;
-                JFXUtil.resetImageBounds(imageView, stackPane1);
-                Platform.runLater(() -> {
-                    try {
-                        attachment_data.clear();
-                        int lnCtr;
-                        int lnCount = 0;
-                        for (lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
-                            if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
-                                continue;
-                            }
-                            lnCount += 1;
-                            attachment_data.add(
-                                    new ModelPOAttachment(String.valueOf(lnCount),
-                                            String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
-                                            String.valueOf(lnCtr)
-                                    ));
-                        }
-                        int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
-                        if (lnTempRow < 0 || lnTempRow
-                                >= attachment_data.size()) {
-                            if (!attachment_data.isEmpty()) {
-                                /* FOCUS ON FIRST ROW */
-                                JFXUtil.selectAndFocusRow(tblAttachments, 0);
-                                int lnRow = Integer.parseInt(attachment_data.get(0).getIndex03());
-                                pnAttachment = lnRow;
-                                loadRecordAttachment(true);
-                            }
-                        } else {
-                            /* FOCUS ON THE ROW THAT pnRowDetail POINTS TO */
-                            JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
-                            int lnRow = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
-                            pnAttachment = lnRow;
-                            loadRecordAttachment(true);
-                        }
-                        if (attachment_data.size() <= 0) {
-                            loadRecordAttachment(false);
-                        }
-                    } catch (Exception e) {
-                    }
-                });
-
-                return null;
-            }
-
-            @Override
-            protected void succeeded() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
-                } else {
-                    tblAttachments.toFront();
+        scaleFactor = 1.0;
+        JFXUtil.resetImageBounds(imageView, stackPane1);
+        attachment_data.clear();
+        try {
+            int lnCount = 0;
+            for (int lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
+                if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
+                    continue;
                 }
-                progressIndicator.setVisible(false);
-
+                lnCount += 1;
+                attachment_data.add(new ModelPOAttachment(String.valueOf(lnCount),
+                        String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
+                        String.valueOf(lnCtr)));
             }
-
-            @Override
-            protected void failed() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
+            int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
+            if (lnTempRow < 0 || lnTempRow >= attachment_data.size()) {
+                if (!attachment_data.isEmpty()) {
+                    /* FOCUS ON FIRST ROW */
+                    JFXUtil.selectAndFocusRow(tblAttachments, 0);
+                    pnAttachment = Integer.parseInt(attachment_data.get(0).getIndex03());
+                    loadRecordAttachment(true);
                 }
-                progressIndicator.setVisible(false);
+            } else {
+                /* FOCUS ON THE ROW THAT pnAttachment POINTS TO */
+                JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
+                pnAttachment = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
+                loadRecordAttachment(true);
             }
+            if (attachment_data.isEmpty()) {
+                loadRecordAttachment(false);
+            }
+        } catch (Exception ex) {
+            Logger.getLogger(PurchaseOrderGeneral_ConfirmationController.class.getName()).log(Level.SEVERE, "Unable to load the attachments", ex);
+        }
 
-        };
-        new Thread(task).start(); // Run task in background
-
+        if (attachment_data.isEmpty()) {
+            Label loPlaceholder = new Label("NO RECORD TO LOAD");
+            loPlaceholder.setStyle("-fx-font-size: 10px;");
+            tblAttachments.setPlaceholder(loPlaceholder);
+        } else {
+            tblAttachments.toFront();
+        }
     }
-    
+
     public void loadRecordAttachment(boolean lbloadImage) {
         try {
             boolean lbShow2 = pnEditMode == EditMode.UPDATE || pnEditMode == EditMode.ADDNEW;

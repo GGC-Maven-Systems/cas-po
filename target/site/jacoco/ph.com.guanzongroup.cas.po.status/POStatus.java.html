@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>POStatus.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.status</a> &gt; <span class="el_source">POStatus.java</span></div><h1>POStatus.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.status;
+
+/**
+ * Purchase Order statuses in one place: code, label, and the pending
+ * (authorization requested) letter.
+ *
+ * &lt;p&gt;
+ * A status waiting for matrix authorization is stored as a letter: 64 + the
+ * status code ('A' = 1 CONFIRMED pending, 'E' = 5 APPROVED pending, ...).&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The codes come from {@link PurchaseOrderStatus}, so they stay the single
+ * source of truth.&lt;/p&gt;
+ */
+<span class="fc" id="L15">public enum POStatus {</span>
+
+<span class="fc" id="L17">    OPEN(PurchaseOrderStatus.OPEN, &quot;OPEN&quot;),</span>
+<span class="fc" id="L18">    CONFIRMED(PurchaseOrderStatus.CONFIRMED, &quot;CONFIRMED&quot;),</span>
+<span class="fc" id="L19">    PROCESSED(PurchaseOrderStatus.PROCESSED, &quot;PROCESSED&quot;),</span>
+<span class="fc" id="L20">    CANCELLED(PurchaseOrderStatus.CANCELLED, &quot;CANCELLED&quot;),</span>
+<span class="fc" id="L21">    VOID(PurchaseOrderStatus.VOID, &quot;VOID&quot;),</span>
+<span class="fc" id="L22">    APPROVED(PurchaseOrderStatus.APPROVED, &quot;APPROVED&quot;),</span>
+<span class="fc" id="L23">    POSTED(PurchaseOrderStatus.POSTED, &quot;POSTED&quot;),</span>
+<span class="fc" id="L24">    RETURNED(PurchaseOrderStatus.RETURNED, &quot;RETURNED&quot;);</span>
+
+    private final String psCode;
+    private final String psLabel;
+
+<span class="fc" id="L29">    POStatus(String fsCode, String fsLabel) {</span>
+<span class="fc" id="L30">        psCode = fsCode;</span>
+<span class="fc" id="L31">        psLabel = fsLabel;</span>
+<span class="fc" id="L32">    }</span>
+
+    /** Stored status code (&quot;0&quot;, &quot;1&quot;, ...). */
+    public String getCode() {
+<span class="fc" id="L36">        return psCode;</span>
+    }
+
+    public String getLabel() {
+<span class="nc" id="L40">        return psLabel;</span>
+    }
+
+    /** Letter stored while this status waits for authorization (64 + code). */
+    public String getPendingCode() {
+<span class="fc" id="L45">        return Character.toString((char) (64 + Integer.parseInt(psCode)));</span>
+    }
+
+    // =====================================================================
+    // Lookups
+    // =====================================================================
+    /** Status for a stored code or pending letter; null when unknown or empty. */
+    public static POStatus of(String fsCode) {
+<span class="fc bfc" id="L53" title="All 4 branches covered.">        if (fsCode == null || fsCode.isEmpty()) {</span>
+<span class="fc" id="L54">            return null;</span>
+        }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        String lsCode = isPending(fsCode) ? String.valueOf(fsCode.charAt(0) - 64) : fsCode;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (POStatus loStatus : values()) {</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if (loStatus.psCode.equals(lsCode)) {</span>
+<span class="fc" id="L59">                return loStatus;</span>
+            }
+        }
+<span class="fc" id="L62">        return null;</span>
+    }
+
+    /** Whether the stored code is a pending letter ('A'..'Z'). */
+    public static boolean isPending(String fsCode) {
+<span class="pc bpc" id="L67" title="2 of 4 branches missed.">        return fsCode != null &amp;&amp; fsCode.length() == 1</span>
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">                &amp;&amp; fsCode.charAt(0) &gt;= 'A' &amp;&amp; fsCode.charAt(0) &lt;= 'Z';</span>
+    }
+
+    // =====================================================================
+    // Labels used by the screens and reports
+    // =====================================================================
+    /**
+     * Report label: &quot;CONFIRMED&quot;, or &quot;CONFIRMED+&quot; while pending; the raw code
+     * when unknown.
+     */
+    public static String label(String fsCode) {
+<span class="fc" id="L79">        POStatus loStatus = of(fsCode);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (loStatus == null) {</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            return fsCode == null ? &quot;&quot; : fsCode;</span>
+        }
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        return loStatus.psLabel + (isPending(fsCode) ? &quot;+&quot; : &quot;&quot;);</span>
+    }
+
+    /**
+     * Status history label: &quot;-&quot; when empty, &quot;APRVL REQUESTD&quot; for a pending
+     * approval, the plain label for other statuses (pending or not).
+     */
+    public static String historyLabel(String fsCode) {
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        if (fsCode == null || fsCode.isEmpty()) {</span>
+<span class="fc" id="L92">            return &quot;-&quot;;</span>
+        }
+<span class="fc" id="L94">        POStatus loStatus = of(fsCode);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (loStatus == null) {</span>
+<span class="nc" id="L96">            return fsCode;</span>
+        }
+<span class="fc bfc" id="L98" title="All 4 branches covered.">        if (loStatus == APPROVED &amp;&amp; isPending(fsCode)) {</span>
+<span class="fc" id="L99">            return &quot;APRVL REQUESTD&quot;;</span>
+        }
+<span class="fc" id="L101">        return loStatus.psLabel;</span>
+    }
+
+    /**
+     * Label on the PO screen: &quot;VOIDED&quot; for void, &quot;UNKNOWN&quot; when unknown, with
+     * &quot;+&quot; while pending.
+     */
+    public static String screenLabel(String fsCode) {
+<span class="fc" id="L109">        POStatus loStatus = of(fsCode);</span>
+<span class="fc bfc" id="L110" title="All 4 branches covered.">        String lsLabel = loStatus == null ? &quot;UNKNOWN&quot; : (loStatus == VOID ? &quot;VOIDED&quot; : loStatus.psLabel);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        return lsLabel + (isPending(fsCode) ? &quot;+&quot; : &quot;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

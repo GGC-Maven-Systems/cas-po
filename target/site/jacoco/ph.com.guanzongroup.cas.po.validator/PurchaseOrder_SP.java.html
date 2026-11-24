@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrder_SP.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.validator</a> &gt; <span class="el_source">PurchaseOrder_SP.java</span></div><h1>PurchaseOrder_SP.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.validator;
+
+import java.sql.SQLException;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.json.simple.JSONObject;
+
+/**
+ * Purchase Order validator for the Spare Parts industry.
+ *
+ * The shared General Inventory rules always run first (see
+ * {@link PurchaseOrderValidator}). Put Spare Parts-only rules in the hooks below.
+ * Delete the hooks you don't need; the base class already returns success.
+ */
+<span class="nc" id="L14">public class PurchaseOrder_SP extends PurchaseOrderValidator {</span>
+
+    // ------------------------------------------------------------------
+    // Settings: tune a shared rule for Spare Parts (remove if not needed)
+    // ------------------------------------------------------------------
+    // @Override
+    // protected double getPriceTolerancePct() {
+    //     return 0.0000; //e.g. allow a small price difference vs quotation
+    // }
+
+    // ------------------------------------------------------------------
+    // Spare Parts rules per status
+    // ------------------------------------------------------------------
+    @Override
+    protected JSONObject industryNewRules() throws SQLException, GuanzonException {
+        //TODO Spare Parts rules for saving an OPEN purchase order
+        //Example (needs setDetail() from the controller):
+        //for (Model_PO_Detail loDetail : getDetails()) {
+        //    if (...) return error(&quot;...&quot;);
+        //}
+<span class="nc" id="L34">        return success();</span>
+    }
+
+    @Override
+    protected JSONObject industryConfirmedRules() throws SQLException, GuanzonException {
+        //TODO Spare Parts rules before confirmation
+<span class="nc" id="L40">        return success();</span>
+    }
+
+    @Override
+    protected JSONObject industryApprovedRules() throws SQLException, GuanzonException {
+        //TODO Spare Parts rules before approval (run before the authorization matrix)
+<span class="nc" id="L46">        return success();</span>
+    }
+
+    @Override
+    protected JSONObject industryCancelledRules() throws SQLException, GuanzonException {
+        //TODO Spare Parts rules before cancellation
+<span class="nc" id="L52">        return success();</span>
+    }
+
+    @Override
+    protected JSONObject industryVoidRules() throws SQLException, GuanzonException {
+        //TODO Spare Parts rules before voiding
+<span class="nc" id="L58">        return success();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

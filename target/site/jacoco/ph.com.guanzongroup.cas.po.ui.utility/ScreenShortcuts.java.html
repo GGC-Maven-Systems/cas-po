@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ScreenShortcuts.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.ui.utility</a> &gt; <span class="el_source">ScreenShortcuts.java</span></div><h1>ScreenShortcuts.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.ui.utility;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.BooleanSupplier;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+import javafx.scene.control.Button;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
+import javafx.stage.Window;
+import javafx.stage.WindowEvent;
+import org.guanzon.appdriver.base.CommonUtils;
+
+/**
+ * Keyboard shortcuts for a screen's buttons, and a guard against closing the
+ * window with unsaved changes.
+ *
+ * &lt;p&gt;
+ * A shortcut works like clicking its button, and only while the button is
+ * shown and enabled on the screen (so Ctrl+S does nothing when Save is
+ * hidden). The keys are caught on the screen's root pane, so a screen that sits
+ * in a dashboard tab only reacts while it has the focus, and a key a field
+ * already handled (Esc closing the suggestion list, for example) does not
+ * reach it. The button's tooltip shows the shortcut.&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * ScreenShortcuts.on(AnchorMain)
+ *         .add(btnSave, &quot;Shortcut+S&quot;)
+ *         .add(btnCancel, &quot;Esc&quot;);
+ * &lt;/pre&gt;
+ */
+public final class ScreenShortcuts {
+
+<span class="nc" id="L38">    private final Map&lt;KeyCombination, Button&gt; poKeys = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L40">    private ScreenShortcuts(Node foRoot) {</span>
+<span class="nc" id="L41">        foRoot.addEventHandler(KeyEvent.KEY_PRESSED, this::onKeyPressed);</span>
+<span class="nc" id="L42">    }</span>
+
+    /** Shortcuts caught on this root pane. */
+    public static ScreenShortcuts on(Node foRoot) {
+<span class="nc" id="L46">        return new ScreenShortcuts(foRoot);</span>
+    }
+
+    /**
+     * @param fsKeys a key combination such as &quot;Shortcut+S&quot;, &quot;Esc&quot;, &quot;F10&quot;
+     * (&quot;Shortcut&quot; is Ctrl on Windows)
+     */
+    public ScreenShortcuts add(Button foButton, String fsKeys) {
+<span class="nc" id="L54">        KeyCombination loKeys = KeyCombination.valueOf(fsKeys);</span>
+<span class="nc" id="L55">        poKeys.put(loKeys, foButton);</span>
+<span class="nc bnc" id="L56" title="All 4 branches missed.">        String lsText = foButton.getText() == null || foButton.getText().isEmpty() ? &quot;&quot; : foButton.getText() + &quot; &quot;;</span>
+<span class="nc" id="L57">        foButton.setTooltip(new Tooltip(lsText + &quot;(&quot; + loKeys.getDisplayText() + &quot;)&quot;));</span>
+<span class="nc" id="L58">        return this;</span>
+    }
+
+    private void onKeyPressed(KeyEvent foEvent) {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (Map.Entry&lt;KeyCombination, Button&gt; loKey : poKeys.entrySet()) {</span>
+<span class="nc bnc" id="L63" title="All 4 branches missed.">            if (loKey.getKey().match(foEvent) &amp;&amp; isUsable(loKey.getValue())) {</span>
+<span class="nc" id="L64">                foEvent.consume();</span>
+<span class="nc" id="L65">                loKey.getValue().fire();</span>
+<span class="nc" id="L66">                return;</span>
+            }
+<span class="nc" id="L68">        }</span>
+<span class="nc" id="L69">    }</span>
+
+    /** Shown (with all its parents) and enabled. */
+    static boolean isUsable(Node foNode) {
+<span class="nc bnc" id="L73" title="All 4 branches missed.">        if (foNode.isDisabled() || foNode.getScene() == null) {</span>
+<span class="nc" id="L74">            return false;</span>
+        }
+<span class="nc" id="L76">        return isShowing(foNode);</span>
+    }
+
+    /** The node and all its parents are visible (a hidden dashboard tab is not). */
+    static boolean isShowing(Node foNode) {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        for (Node loNode = foNode; loNode != null; loNode = loNode.getParent()) {</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">            if (!loNode.isVisible()) {</span>
+<span class="nc" id="L83">                return false;</span>
+            }
+        }
+<span class="nc" id="L86">        return true;</span>
+    }
+
+    /**
+     * Makes these text areas move on like the other fields:
+     * &lt;ul&gt;
+     * &lt;li&gt;Enter and Tab go to the next field, Shift+Tab to the previous one
+     * (a text area otherwise types a line break / tab and keeps the focus);&lt;/li&gt;
+     * &lt;li&gt;Ctrl+Enter types a line break;&lt;/li&gt;
+     * &lt;li&gt;Ctrl+Tab still works as before.&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    public static void tabOutOf(TextArea... faAreas) {
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        for (TextArea loArea : faAreas) {</span>
+<span class="nc" id="L100">            loArea.addEventFilter(KeyEvent.KEY_PRESSED, e -&gt; {</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">                if (e.getCode() == KeyCode.ENTER) {</span>
+<span class="nc" id="L102">                    e.consume();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                    if (e.isControlDown()) {</span>
+<span class="nc bnc" id="L104" title="All 4 branches missed.">                        if (loArea.isEditable() &amp;&amp; !loArea.isDisabled()) {</span>
+<span class="nc" id="L105">                            loArea.replaceSelection(&quot;\n&quot;); //line break</span>
+                        }
+                    } else {
+<span class="nc" id="L108">                        CommonUtils.SetNextFocus(loArea);</span>
+                    }
+<span class="nc bnc" id="L110" title="All 4 branches missed.">                } else if (e.getCode() == KeyCode.TAB &amp;&amp; !e.isControlDown()) {</span>
+<span class="nc" id="L111">                    e.consume();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                    if (e.isShiftDown()) {</span>
+<span class="nc" id="L113">                        CommonUtils.SetPreviousFocus(loArea);</span>
+                    } else {
+<span class="nc" id="L115">                        CommonUtils.SetNextFocus(loArea);</span>
+                    }
+                }
+<span class="nc" id="L118">            });</span>
+        }
+<span class="nc" id="L120">    }</span>
+
+    /**
+     * Asks before the window closes while there are unsaved changes; closing
+     * stops when the user answers No. Uses an event filter, so the window's own
+     * close handler (a dashboard's, for example) is kept.
+     *
+     * @param foRoot the screen's root pane (the guard is skipped while it is hidden)
+     * @param foHasChanges whether the screen has unsaved changes
+     * @param foConfirm asks the user; true closes
+     */
+    public static void guardClose(Parent foRoot, BooleanSupplier foHasChanges, BooleanSupplier foConfirm) {
+<span class="nc" id="L132">        foRoot.sceneProperty().addListener((obs, oldScene, newScene) -&gt; {</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (newScene != null) {</span>
+<span class="nc" id="L134">                newScene.windowProperty().addListener((o, oldWindow, newWindow) -&gt; addCloseFilter(newWindow, foRoot, foHasChanges, foConfirm));</span>
+<span class="nc" id="L135">                addCloseFilter(newScene.getWindow(), foRoot, foHasChanges, foConfirm);</span>
+            }
+<span class="nc" id="L137">        });</span>
+<span class="nc" id="L138">    }</span>
+
+    private static void addCloseFilter(Window foWindow, Parent foRoot, BooleanSupplier foHasChanges, BooleanSupplier foConfirm) {
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (foWindow == null || foWindow.getProperties().containsKey(foRoot)) {</span>
+<span class="nc" id="L142">            return;</span>
+        }
+<span class="nc" id="L144">        foWindow.getProperties().put(foRoot, Boolean.TRUE); //once per window</span>
+<span class="nc" id="L145">        foWindow.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, e -&gt; {</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">            if (foRoot.getScene() != null &amp;&amp; foRoot.getScene().getWindow() == foWindow</span>
+<span class="nc bnc" id="L147" title="All 6 branches missed.">                    &amp;&amp; isShowing(foRoot) &amp;&amp; foHasChanges.getAsBoolean() &amp;&amp; !foConfirm.getAsBoolean()) {</span>
+<span class="nc" id="L148">                e.consume();</span>
+            }
+<span class="nc" id="L150">        });</span>
+<span class="nc" id="L151">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

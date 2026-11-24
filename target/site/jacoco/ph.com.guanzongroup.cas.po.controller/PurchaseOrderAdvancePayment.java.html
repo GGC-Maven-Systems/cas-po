@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PurchaseOrderAdvancePayment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">cas-po</a> &gt; <a href="index.source.html" class="el_package">ph.com.guanzongroup.cas.po.controller</a> &gt; <span class="el_source">PurchaseOrderAdvancePayment.java</span></div><h1>PurchaseOrderAdvancePayment.java</h1><pre class="source lang-java linenums">package ph.com.guanzongroup.cas.po.controller;
+
+import static ph.com.guanzongroup.cas.po.utility.Results.error;
+import static ph.com.guanzongroup.cas.po.utility.Results.isSuccess;
+import static ph.com.guanzongroup.cas.po.utility.Results.success;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.sql.SQLException;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
+import org.guanzon.appdriver.base.MiscUtil;
+import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
+import org.json.simple.JSONObject;
+import ph.com.guanzongroup.cas.cashflow.Payee;
+import ph.com.guanzongroup.cas.cashflow.services.CashflowControllers;
+
+/**
+ * Payment request (PRF) for a PO's advance payment, created when the PO is
+ * approved.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #prepare()} builds it before the approval's DB transaction;&lt;/li&gt;
+ * &lt;li&gt;{@link #save()} saves it (with the PO's attachments) inside it.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * Advance = net total x rate% + fixed amount (4 decimals).
+ */
+public class PurchaseOrderAdvancePayment {
+
+<span class="fc" id="L35">    private static final Logger LOG = Logger.getLogger(PurchaseOrderAdvancePayment.class.getName());</span>
+<span class="fc" id="L36">    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);</span>
+
+    private final PurchaseOrder poPO;
+    private final GRiderCAS poGRider;
+    private final Supplier&lt;CashflowControllers&gt; poCashflow;
+
+    private CashflowControllers poPaymentRequest;
+    private String psPayeeId;
+
+<span class="fc" id="L45">    public PurchaseOrderAdvancePayment(PurchaseOrder foPO, GRiderCAS foGRider, Supplier&lt;CashflowControllers&gt; foCashflow) {</span>
+<span class="fc" id="L46">        poPO = foPO;</span>
+<span class="fc" id="L47">        poGRider = foGRider;</span>
+<span class="fc" id="L48">        poCashflow = foCashflow;</span>
+<span class="fc" id="L49">    }</span>
+
+    /** Whether the PO asks for an advance payment with a rate or an amount. */
+    public boolean isRequired() {
+<span class="nc" id="L53">        Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        return loMaster.getWithAdvPaym()</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">                &amp;&amp; (money(loMaster.getDownPaymentRatesAmount()).signum() &gt; 0</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">                || money(loMaster.getDownPaymentRatesPercentage()).signum() &gt; 0);</span>
+    }
+
+    /** Advance payment amount: net total x rate% + fixed amount. */
+    public BigDecimal getAmount() {
+<span class="nc" id="L61">        Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc" id="L62">        return money(loMaster.getNetTotal())</span>
+<span class="nc" id="L63">                .multiply(money(loMaster.getDownPaymentRatesPercentage()))</span>
+<span class="nc" id="L64">                .divide(HUNDRED, 4, RoundingMode.HALF_UP)</span>
+<span class="nc" id="L65">                .add(money(loMaster.getDownPaymentRatesAmount()));</span>
+    }
+
+    /** Looks up the payee of a supplier. */
+    public JSONObject searchPayee(String fsSupplierId) throws SQLException, GuanzonException {
+<span class="nc" id="L70">        Payee loPayee = poCashflow.get().Payee();</span>
+<span class="nc" id="L71">        loPayee.setRecordStatus(&quot;1&quot;);</span>
+
+<span class="nc" id="L73">        JSONObject loJSON = loPayee.searchPayee(fsSupplierId);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (isSuccess(loJSON)) {</span>
+<span class="nc" id="L75">            psPayeeId = (String) loJSON.get(&quot;sPayeeIDx&quot;);</span>
+        }
+<span class="nc" id="L77">        return loJSON;</span>
+    }
+
+    public String getPayeeId() {
+<span class="nc" id="L81">        return psPayeeId;</span>
+    }
+
+    /** Builds the payment request when the PO needs one (nothing to do otherwise). */
+    public JSONObject prepare() {
+<span class="nc" id="L86">        poPaymentRequest = null;</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (!isRequired()) {</span>
+<span class="nc" id="L88">            return success();</span>
+        }
+
+        try {
+<span class="nc" id="L92">            Model_PO_Master loMaster = poPO.Master();</span>
+<span class="nc" id="L93">            CashflowControllers loCashflow = new CashflowControllers(poGRider, null);</span>
+<span class="nc" id="L94">            loCashflow.PaymentRequest().InitTransaction();</span>
+<span class="nc" id="L95">            loCashflow.PaymentRequest().NewTransaction();</span>
+
+<span class="nc" id="L97">            searchPayee(loMaster.getSupplierID());</span>
+
+<span class="nc" id="L99">            double lnAdvance = getAmount().doubleValue();</span>
+
+<span class="nc" id="L101">            loCashflow.PaymentRequest().Master().setTransactionDate(loMaster.getTransactionDate());</span>
+<span class="nc" id="L102">            loCashflow.PaymentRequest().Master().setBranchCode(loMaster.getDestinationID());</span>
+<span class="nc bnc" id="L103" title="All 4 branches missed.">            if (poGRider.isMainOffice() || poGRider.isWarehouse()) {</span>
+<span class="nc" id="L104">                loCashflow.PaymentRequest().Master().setDepartmentID(poGRider.getDepartment());</span>
+            }
+<span class="nc" id="L106">            loCashflow.PaymentRequest().Master().setRemarks(loMaster.getRemarks());</span>
+<span class="nc" id="L107">            loCashflow.PaymentRequest().Master().setIndustryID(loMaster.getIndustryID());</span>
+<span class="nc" id="L108">            loCashflow.PaymentRequest().Master().setCompanyID(loMaster.getCompanyID());</span>
+<span class="nc" id="L109">            loCashflow.PaymentRequest().Master().setSourceCode(poPO.getSourceCode());</span>
+<span class="nc" id="L110">            loCashflow.PaymentRequest().Master().setSourceNo(loMaster.getTransactionNo());</span>
+<span class="nc" id="L111">            loCashflow.PaymentRequest().Master().setPayeeID(psPayeeId);</span>
+<span class="nc" id="L112">            loCashflow.PaymentRequest().Master().setEntryNo(1);</span>
+<span class="nc" id="L113">            loCashflow.PaymentRequest().Master().setSeriesNo(loCashflow.PaymentRequest().getSeriesNoByBranch());</span>
+<span class="nc" id="L114">            loCashflow.PaymentRequest().Master().setTranTotal(lnAdvance);</span>
+<span class="nc" id="L115">            loCashflow.PaymentRequest().Master().setNetTotal(lnAdvance);</span>
+<span class="nc" id="L116">            loCashflow.PaymentRequest().Master().setTransactionStatus(PurchaseOrderStatus.CONFIRMED);</span>
+
+<span class="nc" id="L118">            loCashflow.PaymentRequest().Detail(0).setEntryNo(1);</span>
+<span class="nc" id="L119">            loCashflow.PaymentRequest().Detail(0).setParticularID(PurchaseOrderStaticData.default_empty_string);</span>
+<span class="nc" id="L120">            loCashflow.PaymentRequest().Detail(0).setAmount(lnAdvance);</span>
+<span class="nc" id="L121">            loCashflow.PaymentRequest().Detail(0).setDiscount(PurchaseOrderStaticData.default_value_double);</span>
+<span class="nc" id="L122">            loCashflow.PaymentRequest().Detail(0).setAddDiscount(PurchaseOrderStaticData.default_value_double);</span>
+<span class="nc" id="L123">            loCashflow.PaymentRequest().Detail(0).setVatable(PurchaseOrderStaticData.default_value_string);</span>
+<span class="nc" id="L124">            loCashflow.PaymentRequest().Detail(0).setWithHoldingTax(PurchaseOrderStaticData.default_value_double);</span>
+<span class="nc" id="L125">            loCashflow.PaymentRequest().Detail(0).setPRFRemarks(loMaster.getRemarks());</span>
+<span class="nc" id="L126">            loCashflow.PaymentRequest().Detail(0).isReverse(true);</span>
+<span class="nc" id="L127">            loCashflow.PaymentRequest().AddDetail();</span>
+
+<span class="nc" id="L129">            poPaymentRequest = loCashflow;</span>
+<span class="nc" id="L130">            return success();</span>
+<span class="nc" id="L131">        } catch (Exception ex) {</span>
+<span class="nc" id="L132">            LOG.log(Level.SEVERE, &quot;Unable to prepare the payment request&quot;, ex);</span>
+<span class="nc" id="L133">            return error(MiscUtil.getException(ex));</span>
+        }
+    }
+
+    /** Saves the prepared payment request with the PO's attachments. */
+    public JSONObject save() {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (poPaymentRequest == null) {</span>
+<span class="nc" id="L140">            return success();</span>
+        }
+        try {
+<span class="nc" id="L143">            poPaymentRequest.PaymentRequest().loadPOAttachment(poPO.Master().getTransactionNo());</span>
+<span class="nc" id="L144">            poPaymentRequest.PaymentRequest().setWithParent(true);</span>
+<span class="nc" id="L145">            JSONObject loJSON = poPaymentRequest.PaymentRequest().SaveTransaction();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (&quot;error&quot;.equals((String) loJSON.get(&quot;result&quot;))) {</span>
+<span class="nc" id="L147">                return loJSON;</span>
+            }
+<span class="nc" id="L149">            return success();</span>
+<span class="nc" id="L150">        } catch (Exception ex) {</span>
+<span class="nc" id="L151">            LOG.log(Level.SEVERE, &quot;Unable to save the payment request&quot;, ex);</span>
+<span class="nc" id="L152">            return error(MiscUtil.getException(ex));</span>
+        }
+    }
+
+    // =====================================================================
+    // Helpers
+    // =====================================================================
+    static BigDecimal money(Number fnValue) {
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        if (fnValue == null) {</span>
+<span class="nc" id="L161">            return BigDecimal.ZERO;</span>
+        }
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (fnValue instanceof BigDecimal) {</span>
+<span class="nc" id="L164">            return (BigDecimal) fnValue;</span>
+        }
+<span class="nc" id="L166">        return BigDecimal.valueOf(fnValue.doubleValue());</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

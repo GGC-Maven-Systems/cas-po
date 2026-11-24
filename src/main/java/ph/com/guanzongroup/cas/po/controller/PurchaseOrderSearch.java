@@ -6,8 +6,10 @@ import java.util.function.Supplier;
 import org.guanzon.appdriver.base.GuanzonException;
 import org.guanzon.appdriver.constant.RecordStatus;
 import org.guanzon.cas.client.account.AP_Client_Master;
+import org.guanzon.cas.client.model.Model_AP_Client_Master;
 import org.guanzon.cas.client.services.ClientControllers;
 import org.guanzon.cas.inv.Inventory;
+import org.guanzon.cas.inv.model.Model_Inventory;
 import org.guanzon.cas.inv.services.InvControllers;
 import org.guanzon.cas.parameter.Branch;
 import org.guanzon.cas.parameter.Brand;
@@ -20,6 +22,7 @@ import org.guanzon.cas.parameter.Term;
 import org.guanzon.cas.parameter.services.ParamControllers;
 import ph.com.guanzongroup.cas.po.model.Model_PO_Detail;
 import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.utility.Results;
 import org.json.simple.JSONObject;
 
 /**
@@ -29,6 +32,11 @@ import org.json.simple.JSONObject;
  * Each search opens the lookup dialog of its parameter and, when a record is
  * picked, copies it into the PO. Works with any {@link PurchaseOrder}
  * controller; the ...ForReport searches only return the picked record.</p>
+ *
+ * <p>
+ * The pick... methods load a record by its key (a row picked from an
+ * auto-suggest list, see {@link PurchaseOrderSuggestions}) and copy it into
+ * the PO the same way, without opening the dialog.</p>
  */
 public class PurchaseOrderSearch {
 
@@ -92,21 +100,45 @@ public class PurchaseOrderSearch {
         return loJSON;
     }
 
+    /** Term by code (auto-suggest pick). */
+    public JSONObject pickTerm(String fsTermCode) throws SQLException, GuanzonException {
+        Term loTerm = poParams.get().Term();
+        JSONObject loJSON = loTerm.getModel().openRecord(fsTermCode);
+        if (isSuccess(loJSON)) {
+            master().setTermCode(loTerm.getModel().getTermId());
+        }
+        return loJSON;
+    }
+
     /** Supplier, with its address, contact and (when set) its default term. */
     public JSONObject supplier(String fsValue, boolean fbByCode) throws SQLException, GuanzonException {
         AP_Client_Master loSupplier = poClients.get().APClientMaster();
         loSupplier.setRecordStatus(RecordStatus.ACTIVE);
         JSONObject loJSON = loSupplier.searchRecord(fsValue, fbByCode);
         if (isSuccess(loJSON)) {
-            master().setSupplierID(loSupplier.getModel().getClientId());
-            master().setAddressID(loSupplier.getModel().ClientAddress().getAddressId());
-            master().setContactID(loSupplier.getModel().ClientInstitutionContact().getContactPId());
-            String lsTerm = loSupplier.getModel().getTermId();
-            if (lsTerm != null && !lsTerm.isEmpty()) {
-                master().setTermCode(lsTerm);
-            }
+            applySupplier(loSupplier.getModel());
         }
         return loJSON;
+    }
+
+    /** Supplier by client id (auto-suggest pick). */
+    public JSONObject pickSupplier(String fsClientId) throws SQLException, GuanzonException {
+        AP_Client_Master loSupplier = poClients.get().APClientMaster();
+        JSONObject loJSON = loSupplier.getModel().openRecord(fsClientId);
+        if (isSuccess(loJSON)) {
+            applySupplier(loSupplier.getModel());
+        }
+        return loJSON;
+    }
+
+    private void applySupplier(Model_AP_Client_Master foSupplier) throws SQLException, GuanzonException {
+        master().setSupplierID(foSupplier.getClientId());
+        master().setAddressID(foSupplier.ClientAddress().getAddressId());
+        master().setContactID(foSupplier.ClientInstitutionContact().getContactPId());
+        String lsTerm = foSupplier.getTermId();
+        if (lsTerm != null && !lsTerm.isEmpty()) {
+            master().setTermCode(lsTerm);
+        }
     }
 
     /** Project title, stored as the PO reference. */
@@ -114,6 +146,16 @@ public class PurchaseOrderSearch {
         Project loProject = poParams.get().Project();
         loProject.setRecordStatus("1");
         JSONObject loJSON = loProject.searchRecord(fsValue, true);
+        if (isSuccess(loJSON)) {
+            master().setReference(loProject.getModel().getProjectID());
+        }
+        return loJSON;
+    }
+
+    /** Project title by code (auto-suggest pick). */
+    public JSONObject pickProject(String fsProjectCode) throws SQLException, GuanzonException {
+        Project loProject = poParams.get().Project();
+        JSONObject loJSON = loProject.getModel().openRecord(fsProjectCode);
         if (isSuccess(loJSON)) {
             master().setReference(loProject.getModel().getProjectID());
         }
@@ -135,6 +177,16 @@ public class PurchaseOrderSearch {
         Branch loBranch = poParams.get().Branch();
         loBranch.setRecordStatus(RecordStatus.ACTIVE);
         JSONObject loJSON = loBranch.searchRecord(fsValue, fbByCode);
+        if (isSuccess(loJSON)) {
+            master().setDestinationID(loBranch.getModel().getBranchCode());
+        }
+        return loJSON;
+    }
+
+    /** Destination branch by code (auto-suggest pick). */
+    public JSONObject pickDestination(String fsBranchCode) throws SQLException, GuanzonException {
+        Branch loBranch = poParams.get().Branch();
+        JSONObject loJSON = loBranch.getModel().openRecord(fsBranchCode);
         if (isSuccess(loJSON)) {
             master().setDestinationID(loBranch.getModel().getBranchCode());
         }
@@ -192,19 +244,40 @@ public class PurchaseOrderSearch {
             return loJSON;
         }
 
-        String lsStockId = loInventory.getModel().getStockId();
-        JSONObject loUnique = poPO.rules().validateUniqueItem(fnRow, lsStockId, fsLabel + loInventory.getModel().getDescription());
+        JSONObject loApply = applyInventory(loRow, fnRow, loInventory.getModel(), fsLabel, fbSetBrand);
+        return isSuccess(loApply) ? loJSON : loApply;
+    }
+
+    /**
+     * Item by stock id for a detail row (auto-suggest pick); the same checks
+     * and copying as {@link #inventory}.
+     */
+    public JSONObject pickInventory(String fsStockId, int fnRow, String fsLabel, boolean fbSetBrand)
+            throws SQLException, GuanzonException {
+        Model_PO_Detail loRow = poPO.Detail(fnRow);
+        Inventory loInventory = poInventory.get().Inventory();
+        JSONObject loJSON = loInventory.getModel().openRecord(fsStockId);
+        if (!isSuccess(loJSON)) {
+            return loJSON;
+        }
+        return applyInventory(loRow, fnRow, loInventory.getModel(), fsLabel, fbSetBrand);
+    }
+
+    private JSONObject applyInventory(Model_PO_Detail foRow, int fnRow, Model_Inventory foItem, String fsLabel,
+            boolean fbSetBrand) throws SQLException, GuanzonException {
+        String lsStockId = foItem.getStockId();
+        JSONObject loUnique = poPO.rules().validateUniqueItem(fnRow, lsStockId, fsLabel + foItem.getDescription());
         if (!isSuccess(loUnique)) {
             return loUnique;
         }
 
         if (fbSetBrand) {
-            loRow.setBrandId(loInventory.getModel().getBrandId());
+            foRow.setBrandId(foItem.getBrandId());
         }
-        loRow.setStockID(lsStockId);
-        loRow.setUnitPrice(loInventory.getModel().getCost().doubleValue());
-        loRow.setOldPrice(loInventory.getModel().getCost().doubleValue());
-        return loJSON;
+        foRow.setStockID(lsStockId);
+        foRow.setUnitPrice(foItem.getCost().doubleValue());
+        foRow.setOldPrice(foItem.getCost().doubleValue());
+        return Results.success();
     }
 
     // =====================================================================

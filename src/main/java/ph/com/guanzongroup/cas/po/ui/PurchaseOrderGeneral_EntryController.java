@@ -6,7 +6,11 @@ package ph.com.guanzongroup.cas.po.ui;
 
 import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrder;
 import ph.com.guanzongroup.cas.po.ui.model.ModelPurchaseOrderDetail;
+import ph.com.guanzongroup.cas.po.ui.utility.AutoSuggest;
 import ph.com.guanzongroup.cas.po.ui.utility.CustomCommonUtil;
+import ph.com.guanzongroup.cas.po.ui.utility.ScreenShortcuts;
+import ph.com.guanzongroup.cas.po.ui.utility.SearchFields;
+import ph.com.guanzongroup.cas.po.utility.Suggestion;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -225,6 +229,7 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
     }
 
     /** What the Close button does (e.g. remove the tab); default: close the window. */
+    @Override
     public void setOnClose(Runnable foOnClose) {
         poOnClose = foOnClose;
     }
@@ -275,6 +280,8 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         initTextFieldFocus();
         initTextAreaFocus();
         initTextFieldKeyPressed();
+        initAutoSuggest();
+        initScreenKeys();
         initTextFieldsProperty();
         initCheckBoxActions();
         initDatePickerActions();
@@ -355,7 +362,7 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
     private void loadRecordMaster() {
         try {
             tfTransactionNo.setText(po().Master().getTransactionNo());
-            lblTransactionStatus.setText(po().getStatusValue());
+            lblTransactionStatus.setText(statusText());
             dpTransactionDate.setValue(CustomCommonUtil.parseDateStringToLocalDate(SQLUtil.dateFormat(po().Master().getTransactionDate(), SQLUtil.FORMAT_SHORT_DATE)));
             tfSupplier.setText(po().Master().Supplier().getCompanyName() != null ? po().Master().Supplier().getCompanyName() : "");
             tfDestination.setText(po().Master().Branch().getBranchName() != null ? po().Master().Branch().getBranchName() : "");
@@ -480,8 +487,11 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                         loadRecordMaster();
                         pnTblDetailRow = 0;
                         pnEditMode = po().getEditMode();
+                        //a new PO starts at Supplier, not at the item row
+                        pbFocusHeader = true;
                         loadTableDetail();
                         loadTableDetailAndSelectedRow();
+                        Platform.runLater(() -> tfSupplier.requestFocus());
                     } else {
                         ShowMessageFX.Warning((String) poJSON.get("message"), "Warning", null);
                     }
@@ -503,103 +513,9 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                     }
                     break;
                 case "btnSearch":
+                    //the same search as Enter / F3 in the field
                     if (activeField != null) {
-                        String loTextFieldId = activeField.getId();
-                        String lsValue = activeField.getText().trim();
-                        switch (loTextFieldId) {
-                            case "tfSupplier":
-                                if (!isExchangingSupplier()) {
-                                    return;
-                                }
-                                poJSON = po().SearchSupplier(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfSupplier.setText("");
-                                    break;
-                                }
-                                prevSupplier = po().Master().getSupplierID();
-                                tfSupplier.setText(po().Master().Supplier().getCompanyName());
-                                if (tfSupplier.getText().isEmpty()) {
-                                    tfSupplier.requestFocus();
-                                }
-                                if (!tfSupplier.getText().isEmpty()) {
-                                    loadTableMain();
-                                }
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfDestination":
-                                poJSON = po().SearchDestination(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfDestination.setText("");
-                                    break;
-                                }
-                                tfDestination.setText(po().Master().Branch().getBranchName());
-                                if (tfDestination.getText().isEmpty()) {
-                                    tfDestination.requestFocus();
-                                }
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfTerm":
-                                poJSON = po().SearchTerm(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfTerm.setText("");
-                                    break;
-                                }
-                                tfTerm.setText(po().Master().Term().getDescription());
-                                if (tfTerm.getText().isEmpty()) {
-                                    tfTerm.requestFocus();
-                                }
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfBarcode":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeGeneral(lsValue, true, pnTblDetailRow,
-                                        true);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfBarcode.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfDescription":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeDescriptionGeneral(lsValue, false, pnTblDetailRow,
-                                        true);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfDescription.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            default:
-                                System.out.println("Unknown TextField");
-                        }
+                        searchField(activeField.getId(), activeField.getText().trim());
                     }
                     break;
                 case "btnSave":
@@ -901,91 +817,57 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         }
     }
     
+    /**
+     * Attachment list. Built on the screen thread: the background task only
+     * reset the image view (a screen control, which must not be changed off the
+     * screen thread) and handed the rest back to the screen thread anyway.
+     * Errors are logged now (they were silently ignored).
+     */
     private void loadTableAttachment() {
-        // Setting data to table detail
-        ProgressIndicator progressIndicator = new ProgressIndicator();
-        progressIndicator.setMaxHeight(50);
-        progressIndicator.setStyle("-fx-progress-color: #FF8201;");
-        StackPane loadingPane = new StackPane(progressIndicator);
-        loadingPane.setAlignment(Pos.CENTER);
-        tblAttachments.setPlaceholder(loadingPane);
-        progressIndicator.setVisible(true);
-
-        Label placeholderLabel = new Label("NO RECORD TO LOAD");
-        placeholderLabel.setStyle("-fx-font-size: 10px;"); // Adjust the size as needed
-
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                scaleFactor = 1.0;
-                JFXUtil.resetImageBounds(imageView, stackPane1);
-                Platform.runLater(() -> {
-                    try {
-                        attachment_data.clear();
-                        int lnCtr;
-                        int lnCount = 0;
-                        for (lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
-                            if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
-                                continue;
-                            }
-                            lnCount += 1;
-                            attachment_data.add(
-                                    new ModelPOAttachment(String.valueOf(lnCount),
-                                            String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
-                                            String.valueOf(lnCtr)
-                                    ));
-                        }
-                        int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
-                        if (lnTempRow < 0 || lnTempRow
-                                >= attachment_data.size()) {
-                            if (!attachment_data.isEmpty()) {
-                                /* FOCUS ON FIRST ROW */
-                                JFXUtil.selectAndFocusRow(tblAttachments, 0);
-                                int lnRow = Integer.parseInt(attachment_data.get(0).getIndex03());
-                                pnAttachment = lnRow;
-                                loadRecordAttachment(true);
-                            }
-                        } else {
-                            /* FOCUS ON THE ROW THAT pnRowDetail POINTS TO */
-                            JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
-                            int lnRow = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
-                            pnAttachment = lnRow;
-                            loadRecordAttachment(true);
-                        }
-                        if (attachment_data.size() <= 0) {
-                            loadRecordAttachment(false);
-                        }
-                    } catch (Exception e) {
-                    }
-                });
-
-                return null;
-            }
-
-            @Override
-            protected void succeeded() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
-                } else {
-                    tblAttachments.toFront();
+        scaleFactor = 1.0;
+        JFXUtil.resetImageBounds(imageView, stackPane1);
+        attachment_data.clear();
+        try {
+            int lnCount = 0;
+            for (int lnCtr = 0; lnCtr < po().getTransactionAttachmentCount(); lnCtr++) {
+                if (RecordStatus.INACTIVE.equals(po().TransactionAttachmentList(lnCtr).getModel().getRecordStatus())) {
+                    continue;
                 }
-                progressIndicator.setVisible(false);
-
+                lnCount += 1;
+                attachment_data.add(new ModelPOAttachment(String.valueOf(lnCount),
+                        String.valueOf(po().TransactionAttachmentList(lnCtr).getModel().getFileName()),
+                        String.valueOf(lnCtr)));
             }
-
-            @Override
-            protected void failed() {
-                if (attachment_data == null || attachment_data.isEmpty()) {
-                    tblAttachments.setPlaceholder(placeholderLabel);
+            int lnTempRow = JFXUtil.getDetailRow(attachment_data, pnAttachment, 3); //this method is used only when Reverse is applied
+            if (lnTempRow < 0 || lnTempRow >= attachment_data.size()) {
+                if (!attachment_data.isEmpty()) {
+                    /* FOCUS ON FIRST ROW */
+                    JFXUtil.selectAndFocusRow(tblAttachments, 0);
+                    pnAttachment = Integer.parseInt(attachment_data.get(0).getIndex03());
+                    loadRecordAttachment(true);
                 }
-                progressIndicator.setVisible(false);
+            } else {
+                /* FOCUS ON THE ROW THAT pnAttachment POINTS TO */
+                JFXUtil.selectAndFocusRow(tblAttachments, lnTempRow);
+                pnAttachment = Integer.parseInt(attachment_data.get(tblAttachments.getSelectionModel().getSelectedIndex()).getIndex03());
+                loadRecordAttachment(true);
             }
+            if (attachment_data.isEmpty()) {
+                loadRecordAttachment(false);
+            }
+        } catch (Exception ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, "Unable to load the attachments", ex);
+        }
 
-        };
-        new Thread(task).start(); // Run task in background
-
+        if (attachment_data.isEmpty()) {
+            Label loPlaceholder = new Label("NO RECORD TO LOAD");
+            loPlaceholder.setStyle("-fx-font-size: 10px;");
+            tblAttachments.setPlaceholder(loPlaceholder);
+        } else {
+            tblAttachments.toFront();
+        }
     }
-    
+
     public void loadRecordAttachment(boolean lbloadImage) {
         try {
             boolean lbShow2 = pnEditMode == EditMode.UPDATE || pnEditMode == EditMode.ADDNEW;
@@ -1073,9 +955,72 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         }
     }
 
+    /** Searchable-field marks, button shortcuts and the unsaved-changes guard. */
+    private void initScreenKeys() {
+        //leaving Supplier (in this window) ends the "start at Supplier" of a new PO
+        tfSupplier.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (!isFocused && pbFocusHeader && tfSupplier.getScene() != null
+                    && tfSupplier.getScene().getWindow() != null && tfSupplier.getScene().getWindow().isFocused()) {
+                pbFocusHeader = false;
+            }
+        });
+        SearchFields.mark(tfSupplier, tfDestination, tfReferenceNo, tfTerm, tfBarcode, tfDescription);
+        //clicking Search keeps the focus (and the typed text) in the field
+        btnSearch.setFocusTraversable(false);
+        ScreenShortcuts.tabOutOf(taRemarks);
+        ScreenShortcuts.on(AnchorMain)
+                .add(btnNew, "Shortcut+N")
+                .add(btnBrowse, "Shortcut+O")
+                .add(btnUpdate, "Shortcut+E")
+                .add(btnSave, "Shortcut+S")
+                .add(btnCancel, "Esc")
+                .add(btnPrint, "Shortcut+P")
+                .add(btnRetrieve, "Shortcut+R");
+        ScreenShortcuts.guardClose(AnchorMain, this::isEditing, this::confirmDiscard);
+    }
+
+    /** Description of the PO's term; empty when no term is set. */
+    private String termText() throws SQLException, GuanzonException {
+        if (isEmpty(po().Master().getTermCode())) {
+            return "";
+        }
+        String lsTerm = po().Master().Term().getDescription();
+        return lsTerm == null ? "" : lsTerm;
+    }
+
+    private boolean isEditing() {
+        return pnEditMode == EditMode.ADDNEW || pnEditMode == EditMode.UPDATE;
+    }
+
+    /** True when there is nothing to lose, or the user agrees to discard the changes. */
+    private boolean confirmDiscard() {
+        return !isEditing()
+                || ShowMessageFX.YesNo("This purchase order has unsaved changes. Discard them?", psFormName, null);
+    }
+
+    /** cas-app asks before closing this screen's tab while a PO is new or being edited. */
+    @Override
+    public boolean hasUnsavedChanges() {
+        return isEditing();
+    }
+
+    /** PO status with the screen mode: "NEW", "OPEN (EDITING)", "OPEN". */
+    private String statusText() {
+        if (pnEditMode == EditMode.ADDNEW) {
+            return "NEW";
+        }
+        if (pnEditMode == EditMode.UPDATE) {
+            return po().getStatusValue() + " (EDITING)";
+        }
+        if (pnEditMode == EditMode.READY) {
+            return po().getStatusValue();
+        }
+        return "UNKNOWN";
+    }
+
     private void initTextFieldFocus() {
         List<TextField> loTxtField = Arrays.asList(tfReferenceNo, tfDiscountRate, tfDiscountAmount,
-                tfAdvancePRate, tfAdvancePAmount, tfCost, tfOrderQuantity);
+                tfAdvancePRate, tfAdvancePAmount, tfCost, tfOrderQuantity, tfDestination, tfSupplier, tfTerm);
         loTxtField.forEach(tf -> tf.focusedProperty().addListener(txtField_Focus));
 
         tfBarcode.setOnMouseClicked(e -> activeField = tfBarcode);
@@ -1083,6 +1028,63 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         tfSupplier.setOnMouseClicked(e -> activeField = tfSupplier);
         tfDestination.setOnMouseClicked(e -> activeField = tfDestination);
         tfTerm.setOnMouseClicked(e -> activeField = tfTerm);
+    }
+
+    /**
+     * Leaving Destination: an empty field goes back to the user's branch, loaded
+     * as a real record (it used to show the branch code as plain text while the
+     * PO kept its old destination). Text that was typed but not searched is not
+     * kept: the field always shows the destination the PO will be saved with.
+     */
+    private void leaveDestination(String fsValue) {
+        if (pnEditMode != EditMode.ADDNEW && pnEditMode != EditMode.UPDATE) {
+            return;
+        }
+        try {
+            if (fsValue == null || fsValue.trim().isEmpty()) {
+                JSONObject loJSON = po().SelectDestination(poApp.getBranchCode());
+                if (!"success".equals(loJSON.get("result"))) {
+                    ShowMessageFX.Warning((String) loJSON.get("message"), psFormName, null);
+                }
+            }
+            String lsName = isEmpty(po().Master().getDestinationID()) ? "" : po().Master().Branch().getBranchName();
+            tfDestination.setText(lsName == null ? "" : lsName);
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    /** True while the screen shows the PO's supplier (the text listener must not clear it). */
+    private boolean pbShowingSupplier;
+
+    /**
+     * Leaving Supplier or Term: text that was typed but not searched or picked
+     * is not kept; the field shows the record the PO will be saved with. An
+     * emptied Supplier is left to the text listener (it clears the supplier).
+     */
+    private void leaveLookup(String fsFieldId, String fsValue) {
+        if (!isEditing()) {
+            return;
+        }
+        try {
+            if ("tfSupplier".equals(fsFieldId)) {
+                if (fsValue == null || fsValue.trim().isEmpty()) {
+                    return;
+                }
+                String lsName = isEmpty(po().Master().getSupplierID()) ? "" : po().Master().Supplier().getCompanyName();
+                pbShowingSupplier = true;
+                try {
+                    tfSupplier.setText(lsName == null ? "" : lsName);
+                } finally {
+                    pbShowingSupplier = false;
+                }
+            } else if ("tfTerm".equals(fsFieldId)) {
+                String lsTerm = isEmpty(po().Master().getTermCode()) ? "" : po().Master().Term().getDescription();
+                tfTerm.setText(lsTerm == null ? "" : lsTerm);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     private void initTextAreaFocus() {
@@ -1150,9 +1152,11 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                     loadTableDetailAndSelectedRow();
                     break;
                 case "tfDestination":
-                    if (lsValue == null || lsValue.isEmpty()) {
-                        tfDestination.setText(poApp.getBranchCode());
-                    }
+                    leaveDestination(lsValue);
+                    break;
+                case "tfSupplier":
+                case "tfTerm":
+                    leaveLookup(lsTextFieldID, lsValue);
                     break;
             }
         } else {
@@ -1189,6 +1193,63 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         loTxtField.forEach(tf -> tf.setOnKeyPressed(event -> txtField_KeyPressed(event)));
     }
 
+    /**
+     * Whether the field still shows the record that is loaded (its id is set
+     * and the text is what the screen displays for it), so Enter needs no search.
+     */
+    private boolean isLoadedValue(String fsFieldId, String fsText) throws SQLException, GuanzonException {
+        if (fsText == null || fsText.trim().isEmpty()) {
+            return false;
+        }
+        String lsLoaded;
+        switch (fsFieldId) {
+            case "tfReferenceNo":
+                lsLoaded = po().Master().getReference();
+                break;
+            case "tfSupplier":
+                lsLoaded = isEmpty(po().Master().getSupplierID()) ? null : po().Master().Supplier().getCompanyName();
+                break;
+            case "tfDestination":
+                lsLoaded = isEmpty(po().Master().getDestinationID()) ? null : po().Master().Branch().getBranchName();
+                break;
+            case "tfTerm":
+                lsLoaded = isEmpty(po().Master().getTermCode()) ? null : po().Master().Term().getDescription();
+                break;
+            case "tfBarcode":
+            case "tfDescription":
+                if (pnTblDetailRow < 0 || pnTblDetailRow >= po().getDetailCount()
+                        || isEmpty(po().Detail(pnTblDetailRow).getStockID())) {
+                    return false;
+                }
+                lsLoaded = "tfBarcode".equals(fsFieldId)
+                        ? po().Detail(pnTblDetailRow).Inventory().getBarCode()
+                        : po().Detail(pnTblDetailRow).Inventory().getDescription();
+                break;
+            default:
+                return false;
+        }
+        return lsLoaded != null && !lsLoaded.isEmpty() && fsText.trim().equals(lsLoaded.trim());
+    }
+
+    private static boolean isEmpty(String fsValue) {
+        return fsValue == null || fsValue.isEmpty();
+    }
+
+    /** Fields whose Enter / F3 opens a search (Tab only moves on). */
+    private static boolean isSearchField(String fsFieldId) {
+        switch (fsFieldId) {
+            case "tfReferenceNo":
+            case "tfSupplier":
+            case "tfDestination":
+            case "tfTerm":
+            case "tfBarcode":
+            case "tfDescription":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void txtField_KeyPressed(KeyEvent event) {
         TextField lsTxtField = (TextField) event.getSource();
         String txtFieldID = ((TextField) event.getSource()).getId();
@@ -1204,97 +1265,21 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                     case TAB:
                     case ENTER:
                     case F3:
-                        switch (txtFieldID) {
-                            
-                            case "tfReferenceNo":
-                                poJSON = po().SearchProject(lsValue);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfReferenceNo.setText("");
-                                    break;
-                                }
-                                tfReferenceNo.setText(po().Master().getReference());
-                                break;
-                            case "tfSupplier":
-                                if (!isExchangingSupplier()) {
-                                    return;
-                                }
-                                poJSON = po().SearchSupplier(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfSupplier.setText("");
-                                    break;
-                                }
-                                prevSupplier = po().Master().getSupplierID();
-                                tfSupplier.setText(po().Master().Supplier().getCompanyName());
-                                if (!tfSupplier.getText().isEmpty()) {
-                                    loadTableMain();
-                                }
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfDestination":
-                                poJSON = po().SearchDestination(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfDestination.setText("");
-                                    break;
-                                }
-                                tfDestination.setText(po().Master().Branch().getBranchName());
-                                break;
-                            case "tfTerm":
-                                poJSON = po().SearchTerm(lsValue, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfTerm.setText("");
-                                    break;
-                                }
-                                tfTerm.setText(po().Master().Term().getDescription());
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfBarcode":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeGeneral(lsValue, false, pnTblDetailRow, true
-                                );
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfBarcode.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfDescription":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeDescriptionGeneral(lsValue, false, pnTblDetailRow,
-                                        true);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfDescription.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
+                        //Tab only moves to the next field; Enter and F3 open the search
+                        if (event.getCode() == TAB && isSearchField(txtFieldID)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
+                        //Enter on a field still showing its loaded record (unique id present): no search, move on.
+                        //F3 always searches.
+                        if (event.getCode() == ENTER && isSearchField(txtFieldID) && isLoadedValue(txtFieldID, lsValue)) {
+                            CommonUtils.SetNextFocus(lsTxtField);
+                            event.consume();
+                            break;
+                        }
+                        if (isSearchField(txtFieldID) && !searchField(txtFieldID, lsValue)) {
+                            return; //supplier change not confirmed
                         }
                         switch (txtFieldID) {
                             case "tfCompany":
@@ -1329,50 +1314,9 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                         event.consume();
                         break;
                     case F4:
-                        switch (txtFieldID) {
-                            case "tfBarcode":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeGeneral(lsValue, false, pnTblDetailRow, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfBarcode.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
-                            case "tfDescription":
-                                if (pnTblDetailRow < 0) {
-                                    ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
-                                    clearDetailFields();
-                                    break;
-                                }
-                                poJSON = po().SearchBarcodeDescriptionGeneral(lsValue, false, pnTblDetailRow, false);
-                                if ("error".equals(poJSON.get("result"))) {
-                                    ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
-                                    tfDescription.setText("");
-                                    if (poJSON.get("tableRow") != null) {
-                                        pnTblDetailRow = (int) poJSON.get("tableRow");
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                loadTableDetail();
-                                loadRecordDetail();
-                                initDetailFocus();
-                                selectTheExistedDetailFromMainTable();
-                                break;
-
+                        //Barcode / Description: search the items of all suppliers
+                        if ("tfBarcode".equals(txtFieldID) || "tfDescription".equals(txtFieldID)) {
+                            searchItem(lsTxtField, lsValue, "tfBarcode".equals(txtFieldID), false);
                         }
                         event.consume();
                         break;
@@ -1698,6 +1642,10 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
     }
 
     private void initButtons(int fnEditMode) {
+        lblTransactionStatus.setText(statusText());
+        if (fnEditMode != EditMode.ADDNEW) {
+            pbFocusHeader = false; //only a new PO starts at Supplier
+        }
         boolean lbShow = (fnEditMode == EditMode.ADDNEW || pnEditMode == EditMode.UPDATE);
         CustomCommonUtil.setVisible(!lbShow, btnBrowse, btnClose, btnNew);
         CustomCommonUtil.setManaged(!lbShow, btnBrowse, btnClose, btnNew);
@@ -1780,101 +1728,73 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         CustomCommonUtil.setManaged(false, piTableDetailLoading, piTableStockRequestLoading, apTableDetailLoading, apTableStockRequestLoading);
     }
 
+    /**
+     * Approved stock requests of the supplier (left table). Read on the screen
+     * thread: it used to run on a background thread while the screen used the
+     * same PO and database connection (the race behind the earlier
+     * NullPointerException in the item table). One query, so it is quick.
+     */
     private void loadTableMain() {
         btnRetrieve.setDisable(true);
-        ProgressIndicator progressIndicator = new ProgressIndicator();
-        progressIndicator.setMaxHeight(50); // Set size to 200x200
-        progressIndicator.setStyle("-fx-progress-color: #FF8201;");
-        StackPane loadingPane = new StackPane(progressIndicator);
-        loadingPane.setAlignment(Pos.CENTER); // Center it
-
-        tblVwStockRequest.setPlaceholder(loadingPane); // Show while loading
-        progressIndicator.setVisible(true); // Make sure it's visible
-        progressIndicator.setManaged(true); // Make sure it's visible
-
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                try {
-                    // Simulate loading delay
-                    main_data.clear();
-                    JSONObject poJSON = po().getApprovedStockRequests();
-
-                    if ("success".equals(poJSON.get("result"))) {
-                        JSONArray approvedRequests = (JSONArray) poJSON.get("data");
-                        main_data.clear();  // Ensure old data is removed
-                        if (approvedRequests != null && !approvedRequests.isEmpty()) {
-                            for (Object requestObj : approvedRequests) {
-                                JSONObject obj = (JSONObject) requestObj;
-                                ModelPurchaseOrder loApprovedStockRequest = new ModelPurchaseOrder(
-                                        String.valueOf(main_data.size() + 1),
-                                        obj.get("sBranchNm") != null ? obj.get("sBranchNm").toString() : "",
-                                        obj.get("dTransact") != null ? obj.get("dTransact").toString() : "",
-                                        obj.get("sTransNox") != null ? obj.get("sTransNox").toString() : "",
-                                        obj.get("total_details") != null ? obj.get("total_details").toString() : "",
-                                        obj.get("sTransNox") != null ? obj.get("sTransNox").toString() : "",
-                                        "0",
-                                        obj.get("request_type") != null ? obj.get("request_type").toString() : "",
-                                        "",
-                                        ""
-                                );
-                                main_data.add(loApprovedStockRequest);
-                            }
-                        } else {
-                            // Ensure main_data remains empty
-                            main_data.clear();
-                        }
+        main_data.clear();
+        try {
+            JSONObject loJSON = po().getApprovedStockRequests();
+            if ("success".equals(loJSON.get("result"))) {
+                JSONArray laRequests = (JSONArray) loJSON.get("data");
+                if (laRequests != null) {
+                    for (Object loRow : laRequests) {
+                        JSONObject loRequest = (JSONObject) loRow;
+                        main_data.add(new ModelPurchaseOrder(
+                                String.valueOf(main_data.size() + 1),
+                                text(loRequest.get("sBranchNm")),
+                                text(loRequest.get("dTransact")),
+                                text(loRequest.get("sTransNox")),
+                                text(loRequest.get("total_details")),
+                                text(loRequest.get("sTransNox")),
+                                "0",
+                                text(loRequest.get("request_type")),
+                                "",
+                                ""));
                     }
-
-                    Platform.runLater(() -> {
-                        if (main_data.isEmpty()) {
-                            tblVwStockRequest.setPlaceholder(new Label("NO RECORD TO LOAD"));
-                            tblVwStockRequest.setItems(FXCollections.observableArrayList(main_data));
-                        } else {
-                            tblVwStockRequest.setItems(FXCollections.observableArrayList(main_data));
-                        }
-                        selectTheExistedDetailFromMainTable();
-                    });
-
-                } catch (SQLException | GuanzonException ex) {
-                    Logger.getLogger(PurchaseOrderGeneral_EntryController.class
-                            .getName()).log(Level.SEVERE, null, ex);
-                }
-                return null;
-            }
-
-            @Override
-            protected void succeeded() {
-                btnRetrieve.setDisable(false);
-                if (main_data == null || main_data.isEmpty()) {
-                    tblVwStockRequest.setPlaceholder(new Label("NO RECORD TO LOAD"));
-                } else {
-                    if (pagination != null) {
-                        pagination.setPageCount((int) Math.ceil((double) main_data.size() / pnTblMain_Page));
-                        pagination.currentPageIndexProperty().addListener((obs, oldIndex, newIndex) -> {
-                            createPage(newIndex.intValue());
-                        });
-                    }
-                    createPage(0);
-                    pagination.setVisible(true);
-                    pagination.setManaged(true);
-                    progressIndicator.setVisible(false);
-                    progressIndicator.setManaged(false);
-                    tblVwStockRequest.toFront();
                 }
             }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        } finally {
+            btnRetrieve.setDisable(false);
+        }
+        showMainPage();
+        selectTheExistedDetailFromMainTable();
+    }
 
-            @Override
-            protected void failed() {
-                btnRetrieve.setDisable(false);
-                pagination.setVisible(true);
-                pagination.setManaged(true);
-                progressIndicator.setVisible(false);
-                progressIndicator.setManaged(false);
-                tblVwStockRequest.toFront();
+    private boolean pbMainPageListener;
+
+    /** First page of main_data, or "NO RECORD TO LOAD". */
+    private void showMainPage() {
+        if (main_data.isEmpty()) {
+            tblVwStockRequest.setItems(FXCollections.observableArrayList());
+            tblVwStockRequest.setPlaceholder(new Label("NO RECORD TO LOAD"));
+            if (pagination != null) {
+                pagination.setVisible(false);
+                pagination.setManaged(false);
             }
-        };
-        new Thread(task).start(); // Run task in background
+            return;
+        }
+        if (pagination != null) {
+            if (!pbMainPageListener) {
+                //added once (it was added again on every load)
+                pagination.currentPageIndexProperty().addListener((obs, oldIndex, newIndex) -> createPage(newIndex.intValue()));
+                pbMainPageListener = true;
+            }
+            pagination.setVisible(true);
+            pagination.setManaged(true);
+        }
+        createPage(0);
+        tblVwStockRequest.toFront();
+    }
+
+    private static String text(Object foValue) {
+        return foValue == null ? "" : foValue.toString();
     }
 
     private Node createPage(int pageIndex) {
@@ -2091,6 +2011,9 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
 
     private void initTextFieldsProperty() {
         tfSupplier.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (pbShowingSupplier) {
+                return;
+            }
             if (newValue != null) {
                 if (newValue.isEmpty()) {
                     try {
@@ -2106,8 +2029,8 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                         main_data.clear();
                         tblVwStockRequest.setPlaceholder(new Label("NO RECORD TO LOAD"));
                         if (pnEditMode == EditMode.ADDNEW || pnEditMode == EditMode.UPDATE) {
-                            po().Master().setTermCode("0000004");
-                            tfTerm.setText(po().Master().Term().getDescription());
+                            po().resetTerm();
+                            tfTerm.setText(termText());
                         }
                     } catch (GuanzonException | SQLException ex) {
                         Logger.getLogger(PurchaseOrderGeneral_EntryController.class
@@ -2117,6 +2040,200 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
             }
         }
         );
+    }
+
+    // =====================================================================
+    // Searchable fields. One method per field, used by the Search button,
+    // Enter / F3 (and F4 on items) in the field, and the auto-suggest pick,
+    // so all of them update the screen the same way.
+    // =====================================================================
+    private void initAutoSuggest() {
+        AutoSuggest.attach(tfSupplier, text -> po().Suggestions().supplier(text), this::pickSupplier);
+        AutoSuggest.attach(tfDestination, text -> po().Suggestions().destination(text), this::pickDestination);
+        AutoSuggest.attach(tfTerm, text -> po().Suggestions().term(text), this::pickTerm);
+        AutoSuggest.attach(tfReferenceNo, text -> po().Suggestions().project(text), this::pickProject);
+        //General Inventory: the PO's supplier, any industry (as Enter / F3)
+        AutoSuggest.attach(tfBarcode, text -> po().Suggestions().barcode(text, pnTblDetailRow, true, false),
+                picked -> pickItem(picked, tfBarcode, true));
+        AutoSuggest.attach(tfDescription, text -> po().Suggestions().description(text, pnTblDetailRow, true, false),
+                picked -> pickItem(picked, tfDescription, false));
+    }
+
+    /**
+     * Search (KwikSearch) of a searchable field with the typed value.
+     *
+     * @return false when the user kept the current supplier (nothing searched)
+     */
+    private boolean searchField(String fsFieldId, String fsValue)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        switch (fsFieldId) {
+            case "tfReferenceNo":
+                showProject(po().SearchProject(fsValue));
+                return true;
+            case "tfSupplier":
+                if (!isExchangingSupplier()) {
+                    return false;
+                }
+                showSupplier(po().SearchSupplier(fsValue, false));
+                return true;
+            case "tfDestination":
+                showDestination(po().SearchDestination(fsValue, false));
+                return true;
+            case "tfTerm":
+                showTerm(po().SearchTerm(fsValue, false));
+                return true;
+            case "tfBarcode":
+                searchItem(tfBarcode, fsValue, true, true);
+                return true;
+            case "tfDescription":
+                searchItem(tfDescription, fsValue, false, true);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Item search of the current row: Barcode searches by barcode, Description
+     * by description (Enter in Barcode used to search the description column).
+     *
+     * @param fbBySupplier only the PO supplier's items (Enter / F3); false for F4
+     */
+    private void searchItem(TextField foField, String fsValue, boolean fbBarcode, boolean fbBySupplier)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        if (!isDetailRowSelected()) {
+            return;
+        }
+        showItem(fbBarcode
+                ? po().SearchBarcodeGeneral(fsValue, true, pnTblDetailRow, fbBySupplier)
+                : po().SearchBarcodeDescriptionGeneral(fsValue, false, pnTblDetailRow, fbBySupplier), foField);
+    }
+
+    private void pickSupplier(Suggestion foPicked) {
+        try {
+            if (isExchangingSupplier() && showSupplier(po().SelectSupplier(foPicked.getId()))) {
+                CommonUtils.SetNextFocus(tfSupplier);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private void pickDestination(Suggestion foPicked) {
+        try {
+            if (showDestination(po().SelectDestination(foPicked.getId()))) {
+                CommonUtils.SetNextFocus(tfDestination);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private void pickTerm(Suggestion foPicked) {
+        try {
+            if (showTerm(po().SelectTerm(foPicked.getId()))) {
+                CommonUtils.SetNextFocus(tfTerm);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private void pickProject(Suggestion foPicked) {
+        try {
+            if (showProject(po().SelectProject(foPicked.getId()))) {
+                CommonUtils.SetNextFocus(tfReferenceNo);
+            }
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    /** Item picked in the barcode or description field of the current row. */
+    private void pickItem(Suggestion foPicked, TextField foField, boolean fbBarcode) {
+        try {
+            if (!isDetailRowSelected()) {
+                return;
+            }
+            showItem(fbBarcode
+                    ? po().SelectBarcode(foPicked.getId(), pnTblDetailRow)
+                    : po().SelectBarcodeDescription(foPicked.getId(), pnTblDetailRow), foField);
+        } catch (SQLException | GuanzonException ex) {
+            Logger.getLogger(PurchaseOrderGeneral_EntryController.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    // ---- screen updates after a search or a pick (true: record loaded) ----
+    private boolean isFound(JSONObject foResult, TextField foField) {
+        if ("error".equals(foResult.get("result"))) {
+            ShowMessageFX.Warning((String) foResult.get("message"), psFormName, null);
+            foField.setText("");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean showSupplier(JSONObject foResult) throws SQLException, GuanzonException {
+        if (!isFound(foResult, tfSupplier)) {
+            return false;
+        }
+        prevSupplier = po().Master().getSupplierID();
+        tfSupplier.setText(po().Master().Supplier().getCompanyName());
+        if (!tfSupplier.getText().isEmpty()) {
+            loadTableMain();
+        }
+        selectTheExistedDetailFromMainTable();
+        return true;
+    }
+
+    private boolean showDestination(JSONObject foResult) throws SQLException, GuanzonException {
+        if (!isFound(foResult, tfDestination)) {
+            return false;
+        }
+        tfDestination.setText(po().Master().Branch().getBranchName());
+        return true;
+    }
+
+    private boolean showTerm(JSONObject foResult) throws SQLException, GuanzonException {
+        if (!isFound(foResult, tfTerm)) {
+            return false;
+        }
+        tfTerm.setText(termText());
+        selectTheExistedDetailFromMainTable();
+        return true;
+    }
+
+    private boolean showProject(JSONObject foResult) {
+        if (!isFound(foResult, tfReferenceNo)) {
+            return false;
+        }
+        tfReferenceNo.setText(po().Master().getReference());
+        return true;
+    }
+
+    /** Item search / pick result; a duplicate item moves to its row ("tableRow"). */
+    private void showItem(JSONObject foResult, TextField foField) {
+        if ("error".equals(foResult.get("result"))) {
+            ShowMessageFX.Warning((String) foResult.get("message"), psFormName, null);
+            foField.setText("");
+            if (foResult.get("tableRow") == null) {
+                return;
+            }
+            pnTblDetailRow = (int) foResult.get("tableRow");
+        }
+        loadTableDetail();
+        loadRecordDetail();
+        initDetailFocus();
+        selectTheExistedDetailFromMainTable();
+    }
+
+    private boolean isDetailRowSelected() {
+        if (pnTblDetailRow < 0) {
+            ShowMessageFX.Warning("Invalid row to update.", psFormName, null);
+            clearDetailFields();
+            return false;
+        }
+        return true;
     }
 
     private boolean isExchangingSupplier() {
@@ -2145,8 +2262,8 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                         pnTblDetailRow = 0;
                         pnTblMainRow = -1;
                         tblVwStockRequest.getSelectionModel().clearSelection();
-                        po().Master().setTermCode("0000004");
-                        tfTerm.setText(po().Master().Term().getDescription());
+                        po().resetTerm();
+                        tfTerm.setText(termText());
                         clearDetailFields();
                         loadTableDetail();
                     } catch (GuanzonException | SQLException | CloneNotSupportedException ex) {
@@ -2158,14 +2275,15 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                     } else {
                         try {
                             poJSON = new JSONObject();
-                            poJSON = po().SearchSupplier(po().Master().getSupplierID(), true);
+                            //reload the current supplier by its id (no search dialog)
+                            poJSON = po().SelectSupplier(po().Master().getSupplierID());
                             if (!"success".equals((String) poJSON.get("result"))) {
                                 ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
                                 return false;
                             }
                             tfSupplier.setText(po().Master().Supplier().getCompanyName());
-                            po().Master().setTermCode("0000004");
-                            tfTerm.setText(po().Master().Term().getDescription());
+                            //change declined: the supplier stays, so its term stays too (it was reset here)
+                            tfTerm.setText(termText());
                             selectTheExistedDetailFromMainTable();
                             return false;
 
@@ -2198,7 +2316,8 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
                         return true;
                     } else {
                         poJSON = new JSONObject();
-                        poJSON = po().SearchSupplier(po().Master().getSupplierID(), true);
+                        //reload the current supplier by its id (no search dialog)
+                        poJSON = po().SelectSupplier(po().Master().getSupplierID());
                         if (!"success".equals((String) poJSON.get("result"))) {
                             ShowMessageFX.Warning((String) poJSON.get("message"), psFormName, null);
                             return false;
@@ -2367,6 +2486,17 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
         initFields(pnEditMode);
     }
 
+    /** A new PO focuses Supplier until the user leaves it (the item row loads later and would take the focus). */
+    private boolean pbFocusHeader;
+
+    private void focusDetail(TextField foField) {
+        if (pbFocusHeader) {
+            tfSupplier.requestFocus();
+        } else {
+            foField.requestFocus();
+        }
+    }
+
     private void initDetailFocus() {
         if (pnEditMode == EditMode.ADDNEW || pnEditMode == EditMode.UPDATE) {
             if (pnTblDetailRow >= 0) {
@@ -2377,15 +2507,15 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
 
                     if ("0007".equals(inventoryTypeOf(pnTblDetailRow))) {
                         CustomCommonUtil.setDisable(false, tfBarcode, tfDescription);
-                        tfOrderQuantity.requestFocus();
+                        focusDetail(tfOrderQuantity);
                     }
                     if (isSourceNotEmpty && !tfBarcode.getText().isEmpty()) {
-                        tfOrderQuantity.requestFocus();
+                        focusDetail(tfOrderQuantity);
                     } else {
                         if (!tfBarcode.getText().isEmpty() && (pnEditMode == EditMode.UPDATE || pnEditMode == EditMode.ADDNEW)) {
-                            tfOrderQuantity.requestFocus();
+                            focusDetail(tfOrderQuantity);
                         } else {
-                            tfBarcode.requestFocus();
+                            focusDetail(tfBarcode);
                         }
                     }
                 } catch (GuanzonException | SQLException ex) {

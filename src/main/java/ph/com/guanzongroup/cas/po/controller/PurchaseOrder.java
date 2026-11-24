@@ -614,6 +614,11 @@ public abstract class PurchaseOrder extends Transaction {
     }
 
     /** Status label for the screen (e.g. "APPROVED", "APPROVED+" while pending). */
+    /** Sets the default term (supplier cleared or changed). */
+    public JSONObject resetTerm() {
+        return Master().setTermCode(PurchaseOrderStaticData.DEFAULT_TERM);
+    }
+
     public String getStatusValue() {
         return POStatus.screenLabel(Master().getTransactionStatus());
     }
@@ -909,6 +914,50 @@ public abstract class PurchaseOrder extends Transaction {
 
     public JSONObject SearchBrand(String value, boolean byCode, int row) throws SQLException, GuanzonException {
         return result(Search().brand(value, byCode, row));
+    }
+
+    // =====================================================================
+    // Auto-suggest: the lists (Suggestions()) and loading a picked row by
+    // its key, applied like the matching Search... method
+    // =====================================================================
+    public JSONObject SelectSupplier(String clientId) throws SQLException, GuanzonException {
+        return result(Search().pickSupplier(clientId));
+    }
+
+    public JSONObject SelectTerm(String termCode) throws SQLException, GuanzonException {
+        return result(Search().pickTerm(termCode));
+    }
+
+    public JSONObject SelectDestination(String branchCode) throws SQLException, GuanzonException {
+        return result(Search().pickDestination(branchCode));
+    }
+
+    /** Item picked in the barcode field (same duplicate message as SearchBarcode). */
+    public JSONObject SelectBarcode(String stockId, int row) throws SQLException, GuanzonException {
+        return result(Search().pickInventory(stockId, row, "Model: ", false));
+    }
+
+    /** Item picked in the description field (same duplicate message as SearchBarcodeDescription). */
+    public JSONObject SelectBarcodeDescription(String stockId, int row) throws SQLException, GuanzonException {
+        return result(Search().pickInventory(stockId, row, "Barcode: ", false));
+    }
+
+    private PurchaseOrderSuggestions poSuggestions;
+
+    protected PurchaseOrderSuggestions createSuggestions() {
+        return new PurchaseOrderSuggestions(this,
+                () -> poGRider,
+                () -> new ParamControllers(poGRider, logwrapr),
+                () -> new InvControllers(poGRider, logwrapr),
+                () -> new ClientControllers(poGRider, logwrapr));
+    }
+
+    /** Auto-suggest lists for the searchable fields. */
+    public PurchaseOrderSuggestions Suggestions() {
+        if (poSuggestions == null) {
+            poSuggestions = createSuggestions();
+        }
+        return poSuggestions;
     }
 
     // =====================================================================
