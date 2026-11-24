@@ -229,6 +229,7 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
     }
 
     /** What the Close button does (e.g. remove the tab); default: close the window. */
+    @Override
     public void setOnClose(Runnable foOnClose) {
         poOnClose = foOnClose;
     }
@@ -995,6 +996,12 @@ public class PurchaseOrderGeneral_EntryController implements Initializable, Scre
     private boolean confirmDiscard() {
         return !isEditing()
                 || ShowMessageFX.YesNo("This purchase order has unsaved changes. Discard them?", psFormName, null);
+    }
+
+    /** cas-app asks before closing this screen's tab while a PO is new or being edited. */
+    @Override
+    public boolean hasUnsavedChanges() {
+        return isEditing();
     }
 
     /** PO status with the screen mode: "NEW", "OPEN (EDITING)", "OPEN". */

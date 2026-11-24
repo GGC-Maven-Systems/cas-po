@@ -21,6 +21,7 @@ ph\com\guanzongroup\cas\po\controller\PurchaseOrderSuggestions.class
 ph\com\guanzongroup\cas\po\ui\utility\JFXUtil$1.class
 ph\com\guanzongroup\cas\po\utility\Suggestion.class
 ph\com\guanzongroup\cas\po\ui\PurchaseOrderGeneral_HistoryController$1.class
+ph\com\guanzongroup\cas\po\ui\PurchaseOrderScreens.class
 ph\com\guanzongroup\cas\po\model\Model_PO_Master.class
 ph\com\guanzongroup\cas\po\ui\model\ModelPurchaseOrder.class
 ph\com\guanzongroup\cas\po\utility\CustomJasperViewerReports.class

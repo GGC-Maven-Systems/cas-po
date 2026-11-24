@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: ph.com.guanzongroup.cas.po.controller.PurchaseOrderListTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in ph.com.guanzongroup.cas.po.controller.PurchaseOrderListTest
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.071 s -- in ph.com.guanzongroup.cas.po.controller.PurchaseOrderListTest
