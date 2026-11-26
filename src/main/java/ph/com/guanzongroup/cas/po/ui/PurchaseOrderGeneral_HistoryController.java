@@ -61,6 +61,7 @@ import javafx.util.Duration;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.guanzon.appdriver.agent.ShowMessageFX;
+import org.guanzon.appdriver.agent.screen.ScreenAccess;
 import org.guanzon.appdriver.base.CommonUtils;
 import org.guanzon.appdriver.base.GRiderCAS;
 import org.guanzon.appdriver.base.GuanzonException;
@@ -264,6 +265,11 @@ public class PurchaseOrderGeneral_HistoryController implements Initializable, Sc
         tblVwOrderDetails.setOnMouseClicked(this::tblVwDetail_Clicked);
         pnEditMode = EditMode.UNKNOWN;
         initButtons(pnEditMode);
+        //user access: hide the buttons of the actions this user may not use
+        ScreenAccess.of(poApp, this)
+                .action("PRINT", btnPrint)
+                .action("ATTACH", btnAddAttachment, btnRemoveAttachment)
+                .apply();
         tblAttachments.setOnMouseClicked(event -> {
             pnAttachment = tblAttachments.getSelectionModel().getSelectedIndex();
             if (pnAttachment >= 0) {

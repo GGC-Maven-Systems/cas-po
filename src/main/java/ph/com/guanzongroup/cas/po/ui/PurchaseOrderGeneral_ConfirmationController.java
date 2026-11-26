@@ -70,6 +70,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.guanzon.appdriver.agent.ShowDialogFX;
 import org.guanzon.appdriver.agent.ShowMessageFX;
+import org.guanzon.appdriver.agent.screen.ScreenAccess;
 import org.guanzon.appdriver.base.CommonUtils;
 import org.guanzon.appdriver.base.GRiderCAS;
 import org.guanzon.appdriver.base.GuanzonException;
@@ -288,6 +289,15 @@ public class PurchaseOrderGeneral_ConfirmationController implements Initializabl
         tblVwOrderDetails.setOnMouseClicked(this::tblVwDetail_Clicked);
         pnEditMode = EditMode.UNKNOWN;
         initButtons(pnEditMode);
+        //user access: hide the buttons of the actions this user may not use
+        ScreenAccess.of(poApp, this)
+                .action("UPDATE", btnUpdate)
+                .action("CONFIRM", btnConfirm)
+                .action("RETURN", btnReturn)
+                .action("VOID", btnVoid)
+                .action("PRINT", btnPrint)
+                .action("ATTACH", btnAddAttachment, btnRemoveAttachment)
+                .apply();
         initFields(pnEditMode);
         tblAttachments.setOnMouseClicked(event -> {
             pnAttachment = tblAttachments.getSelectionModel().getSelectedIndex();

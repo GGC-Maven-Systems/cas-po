@@ -145,3 +145,58 @@
 .table-view .virtual-flow .scroll-bar .thumb:pressed:hover {
     -fx-background-color: #979797;
 }
+
+/*******************************************************************************
+ * cas-app theme (2026-11): tables. Comes last to override the rules above.    *
+ ******************************************************************************/
+.table-view {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #E2E4E8;
+    -fx-border-width: 1px;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 1;
+}
+.table-view .column-header-background {
+    -fx-background-color: #F8F9FA;
+    -fx-background-radius: 8 8 0 0;
+    -fx-border-color: transparent transparent #E2E4E8 transparent;
+}
+.table-view .column-header-background .label,
+.table-view .column-header-background .label:disabled {
+    -fx-text-fill: #5B6370;
+    -fx-font-weight: bold;
+    -fx-font-size: 9pt;
+}
+.table-view .column-header {
+    -fx-border-color: transparent #EEF0F2 transparent transparent;
+    -fx-min-height: 30px;
+    -fx-pref-height: 30px;
+    -fx-max-height: 30px;
+}
+.table-view .table-cell {
+    -fx-text-fill: #1F2328;
+    -fx-border-color: transparent;
+}
+.table-row-cell {
+    -fx-background-color: #EEF0F2, #FFFFFF;
+    -fx-background-insets: 0, 0 0 1 0;
+    -fx-cell-size: 30px;
+}
+.table-row-cell:odd {
+    -fx-background-color: #EEF0F2, #FBFBFC;
+}
+.table-row-cell:hover {
+    -fx-background-color: #EEF0F2, #F2F4F6;
+}
+.table-row-cell:selected,
+.table-row-cell:filled:selected {
+    -fx-background-color: #FFC88A, #FFE3C4;
+    -fx-background-insets: 0, 0 0 1 0;
+}
+.table-row-cell:selected .table-cell {
+    -fx-text-fill: #1F2328;
+}
+.table-row-cell:empty {
+    -fx-background-color: #FFFFFF;
+}

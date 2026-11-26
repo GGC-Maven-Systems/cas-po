@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: ph.com.guanzongroup.cas.po.controller.PurchaseOrderEditingTest
 -------------------------------------------------------------------------------
-Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.418 s -- in ph.com.guanzongroup.cas.po.controller.PurchaseOrderEditingTest
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.434 s -- in ph.com.guanzongroup.cas.po.controller.PurchaseOrderEditingTest

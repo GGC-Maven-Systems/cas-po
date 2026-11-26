@@ -2,6 +2,7 @@
 
 import java.util.Arrays;
 import java.util.List;
+import org.guanzon.appdriver.agent.screen.ScreenAction;
 import org.guanzon.appdriver.agent.screen.ScreenEntry;
 import org.guanzon.appdriver.agent.screen.ScreenProvider;
 
@@ -18,29 +19,46 @@ import org.guanzon.appdriver.agent.screen.ScreenProvider;
  *
  * &lt;p&gt;
  * To move another menu item to cas-po, add its line here.&lt;/p&gt;
+ *
+ * &lt;p&gt;
+ * The actions are the buttons user access can allow or deny (cas-security's
+ * User Access screen); each screen hides the denied ones with ScreenAccess in
+ * initialize(). Keep the keys the same in both places.&lt;/p&gt;
  */
-<span class="nc" id="L22">public class PurchaseOrderScreens implements ScreenProvider {</span>
+<span class="nc" id="L28">public class PurchaseOrderScreens implements ScreenProvider {</span>
 
     private static final String VIEWS = &quot;/ph/com/guanzongroup/cas/po/ui/&quot;;
     private static final String INTEGSYS = &quot;ph.com.guanzongroup.integsys.views.&quot;;
 
     @Override
     public String getModule() {
-<span class="nc" id="L29">        return &quot;cas-po&quot;;</span>
+<span class="nc" id="L35">        return &quot;cas-po&quot;;</span>
     }
 
     @Override
     public List&lt;ScreenEntry&gt; getScreens() {
-<span class="nc" id="L34">        return Arrays.asList(</span>
-<span class="nc" id="L35">                ScreenEntry.of(PurchaseOrderGeneral_EntryController.class,</span>
+<span class="nc" id="L40">        return Arrays.asList(</span>
+<span class="nc" id="L41">                ScreenEntry.of(PurchaseOrderGeneral_EntryController.class,</span>
                         VIEWS + &quot;PurchaseOrderGeneral_Entry.fxml&quot;,
-                        INTEGSYS + &quot;PurchaseOrder_EntryController&quot;),
-<span class="nc" id="L38">                ScreenEntry.of(PurchaseOrderGeneral_ConfirmationController.class,</span>
+                        INTEGSYS + &quot;PurchaseOrder_EntryController&quot;)
+<span class="nc" id="L44">                        .withActions(ScreenAction.of(&quot;NEW&quot;, &quot;New&quot;),</span>
+<span class="nc" id="L45">                                ScreenAction.of(&quot;UPDATE&quot;, &quot;Update&quot;),</span>
+<span class="nc" id="L46">                                ScreenAction.of(&quot;PRINT&quot;, &quot;Print&quot;),</span>
+<span class="nc" id="L47">                                ScreenAction.of(&quot;ATTACH&quot;, &quot;Add / remove attachments&quot;)),</span>
+<span class="nc" id="L48">                ScreenEntry.of(PurchaseOrderGeneral_ConfirmationController.class,</span>
                         VIEWS + &quot;PurchaseOrderGeneral_Confirmation.fxml&quot;,
-                        INTEGSYS + &quot;PurchaseOrder_ConfirmationController&quot;),
-<span class="nc" id="L41">                ScreenEntry.of(PurchaseOrderGeneral_HistoryController.class,</span>
+                        INTEGSYS + &quot;PurchaseOrder_ConfirmationController&quot;)
+<span class="nc" id="L51">                        .withActions(ScreenAction.of(&quot;UPDATE&quot;, &quot;Update&quot;),</span>
+<span class="nc" id="L52">                                ScreenAction.of(&quot;CONFIRM&quot;, &quot;Confirm&quot;),</span>
+<span class="nc" id="L53">                                ScreenAction.of(&quot;RETURN&quot;, &quot;Return&quot;),</span>
+<span class="nc" id="L54">                                ScreenAction.of(&quot;VOID&quot;, &quot;Void&quot;),</span>
+<span class="nc" id="L55">                                ScreenAction.of(&quot;PRINT&quot;, &quot;Print&quot;),</span>
+<span class="nc" id="L56">                                ScreenAction.of(&quot;ATTACH&quot;, &quot;Add / remove attachments&quot;)),</span>
+<span class="nc" id="L57">                ScreenEntry.of(PurchaseOrderGeneral_HistoryController.class,</span>
                         VIEWS + &quot;PurchaseOrderGeneral_History.fxml&quot;,
-                        INTEGSYS + &quot;PurchaseOrder_HistoryController&quot;));
+                        INTEGSYS + &quot;PurchaseOrder_HistoryController&quot;)
+<span class="nc" id="L60">                        .withActions(ScreenAction.of(&quot;PRINT&quot;, &quot;Print&quot;),</span>
+<span class="nc" id="L61">                                ScreenAction.of(&quot;ATTACH&quot;, &quot;Add / remove attachments&quot;)));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
