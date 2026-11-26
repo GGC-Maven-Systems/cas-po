@@ -1,5 +1,8 @@
 package ph.com.guanzongroup.cas.po.status;
 
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+
 /**
  * Purchase Order codes stored in the database: transaction status
  * (cTranStat), source document codes (sSourceCd), processed flag (cProcessd)
@@ -73,4 +76,30 @@ public final class PurchaseOrderStatus {
         private IndustryCode() {
         }
     }
+
+
+    /**
+     * Order type descriptions used in JavaFX ComboBox controls.
+     */
+    public static final ObservableList<String> ORDER_TYPE_DESCRIPTION =
+            FXCollections.observableArrayList(
+                    "Regular",
+                    "Indent",
+                    "Urgent",
+                    "Special Order",
+                    "Bulk Order"
+            );
+
+    /**
+     * Order type codes corresponding to {}.
+     * Same order as {@link #ORDER_TYPE_DESCRIPTION}.
+     */
+    public static final String[] ORDER_TYPE_CODE = {
+            "0",//Regular
+            "1",//Indent
+            "2",//Urgent
+            "3",//Special Order
+            "4"//Bulk Order
+    };
+
 }

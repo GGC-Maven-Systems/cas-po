@@ -70,6 +70,7 @@ public class Model_PO_Master extends Model {
             poEntity.updateObject("dExpected", ldToday);
             poEntity.updateObject("dTransact", ldToday);
             poEntity.updateObject("sBranchCd", poGRider.getBranchCode());
+            poEntity.updateObject("cOrdrType", Logical.NO);
             poEntity.updateObject("sTermCode", ""); //no default term: the user picks one (required on save)
             poEntity.updateObject("sDestinat", poGRider.getBranchCode());
             poEntity.updateObject("nDiscount", 0.00);
