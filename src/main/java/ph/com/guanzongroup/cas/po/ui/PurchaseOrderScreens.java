@@ -2,7 +2,7 @@ package ph.com.guanzongroup.cas.po.ui;
 
 import java.util.Arrays;
 import java.util.List;
-import org.guanzon.appdriver.agent.screen.ScreenEntry;
+    import org.guanzon.appdriver.agent.screen.ScreenEntry;
 import org.guanzon.appdriver.agent.screen.ScreenProvider;
 
 /**

@@ -1,10 +1,15 @@
 package ph.com.guanzongroup.cas.po.services;
 
 import org.guanzon.appdriver.base.GRiderCAS;
+import org.guanzon.appdriver.base.GuanzonException;
 import org.guanzon.appdriver.base.LogWrapper;
+import org.guanzon.cas.parameter.Barangay;
 import ph.com.guanzongroup.cas.po.controller.PurchaseOrder;
 import ph.com.guanzongroup.cas.po.controller.PurchaseOrderGeneral;
 import ph.com.guanzongroup.cas.po.controller.PurchaseOrderRegistry;
+import ph.com.guanzongroup.cas.po.controller.SendMailMaster;
+
+import java.sql.SQLException;
 
 /**
  * Factory for the new Purchase Order controllers
@@ -27,6 +32,7 @@ public class PurchaseOrderControllers {
     private LogWrapper poLogWrapper;
 
     private PurchaseOrderGeneral poGeneral;
+    private SendMailMaster poSendMailMaster;
 
     public PurchaseOrderControllers(GRiderCAS applicationDriver, LogWrapper logWrapper) {
         poGRider = applicationDriver;
@@ -42,6 +48,25 @@ public class PurchaseOrderControllers {
             poGeneral = setUp(new PurchaseOrderGeneral());
         }
         return poGeneral;
+    }
+
+    public SendMailMaster SendMailMaster() throws SQLException, GuanzonException {
+        if (poGRider == null) {
+            poLogWrapper.severe("PurchaseOrderControllers.SendMailMaster: Application driver is not set.");
+            return null;
+        }
+
+        if (poSendMailMaster != null) {
+            return poSendMailMaster;
+        }
+
+        poSendMailMaster = new SendMailMaster();
+        poSendMailMaster.setApplicationDriver(poGRider);
+        poSendMailMaster.setWithParentClass(false);
+        poSendMailMaster.setLogWrapper(poLogWrapper);
+        poSendMailMaster.initialize();
+        poSendMailMaster.newRecord();
+        return poSendMailMaster;
     }
 
     /**

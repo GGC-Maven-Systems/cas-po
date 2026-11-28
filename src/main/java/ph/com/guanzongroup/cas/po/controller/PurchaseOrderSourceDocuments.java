@@ -375,7 +375,7 @@ public class PurchaseOrderSourceDocuments {
 
         String lsSQL = lsStockRequests + " UNION " + lsQuotations + " ORDER BY dTransact, sBranchNm, sTransNox ASC";
         LOG.log(Level.FINE, lsSQL);
-
+        System.out.println("Available sources SQL: " + lsSQL);
         ResultSet loRS = poGRider.executeQuery(lsSQL);
         if (loRS == null) {
             return error("Query execution failed.");

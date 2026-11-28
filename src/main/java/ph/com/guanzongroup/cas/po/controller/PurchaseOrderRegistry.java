@@ -28,7 +28,7 @@ public final class PurchaseOrderRegistry {
     public static final class IndustryCode {
 
         public static final String MOTORCYCLE = "";
-        public static final String MOBILE_PHONE = "";
+        public static final String MOBILE_PHONE = "00";
         public static final String SPARE_PARTS = "";
         public static final String APPLIANCE = "";
 

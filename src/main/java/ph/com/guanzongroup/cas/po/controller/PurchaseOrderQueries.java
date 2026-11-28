@@ -240,4 +240,54 @@ public final class PurchaseOrderQueries {
                 + " LEFT JOIN Model k ON i.sModelIDx = k.sModelIDx"
                 + " LEFT JOIN Color l ON i.sColorIDx = l.sColorIDx";
     }
+
+
+    // =====================================================================
+    // Supplier email
+    // =====================================================================
+    /** All email addresses of a supplier, active and inactive. */
+    public static String supplierEmails(String fsClientID) {
+        return "SELECT sEMailAdd"
+                + " FROM Supplier_Email"
+                + " WHERE sClientID = " + SQLUtil.toSQL(fsClientID)
+                + " ORDER BY nEntryNox, sEMailAdd";
+    }
+
+    /** Record status of one email address of a supplier; no row when not found. */
+    public static String supplierEmail(String fsClientID, String fsEmail) {
+        return "SELECT cRecdStat"
+                + " FROM Supplier_Email"
+                + " WHERE sClientID = " + SQLUtil.toSQL(fsClientID)
+                + " AND sEMailAdd = " + SQLUtil.toSQL(fsEmail);
+    }
+
+    /** Entry number for the next email address of a supplier. */
+    public static String nextSupplierEmailEntry(String fsClientID) {
+        return "SELECT IFNULL(MAX(nEntryNox), 0) + 1 AS nEntryNox"
+                + " FROM Supplier_Email"
+                + " WHERE sClientID = " + SQLUtil.toSQL(fsClientID);
+    }
+
+    /**
+     * Activates or deactivates one email address. Both the supplier and the
+     * address are filtered, because a supplier has many rows.
+     */
+    public static String updateSupplierEmailStatus(String fsClientID, String fsEmail, String fsStatus,
+                                                   String fsUserID, java.util.Date fdModified) {
+        return "UPDATE Supplier_Email SET"
+                + "  cRecdStat = " + SQLUtil.toSQL(fsStatus)
+                + ", sModified = " + SQLUtil.toSQL(fsUserID)
+                + ", dModified = " + SQLUtil.toSQL(fdModified)
+                + " WHERE sClientID = " + SQLUtil.toSQL(fsClientID)
+                + " AND sEMailAdd = " + SQLUtil.toSQL(fsEmail);
+    }
+
+    /** Email record already saved for a source document. */
+    public static String queuedMail(String fsSourceCode, String fsSourceNo) {
+        return "SELECT sTransNox"
+                + " FROM Send_Mail_Master"
+                + " WHERE sSourceCD = " + SQLUtil.toSQL(fsSourceCode)
+                + " AND sSourceNo = " + SQLUtil.toSQL(fsSourceNo)
+                + " LIMIT 1";
+    }
 }

@@ -4,14 +4,19 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import javax.sql.rowset.CachedRowSet;
 import org.guanzon.appdriver.agent.MatrixAuthChecker;
+import org.guanzon.appdriver.agent.services.ReferenceCache;
 import org.guanzon.appdriver.base.GuanzonException;
 import org.guanzon.appdriver.base.MiscUtil;
 import org.guanzon.appdriver.base.SQLUtil;
@@ -19,8 +24,14 @@ import org.guanzon.appdriver.constant.EditMode;
 import org.guanzon.appdriver.constant.RecordStatus;
 import org.guanzon.appdriver.constant.UserRight;
 import org.guanzon.cas.inv.warehouse.services.InvWarehouseControllers;
+import org.guanzon.cas.parameter.SupplierEmail;
+import org.guanzon.cas.parameter.model.Model_Supplier_Email;
+import org.guanzon.cas.parameter.services.ParamModels;
 import ph.com.guanzongroup.cas.po.model.Model_PO_Master;
+import ph.com.guanzongroup.cas.po.model.Model_Send_Mail_Master;
+import ph.com.guanzongroup.cas.po.services.PurchaseOrderControllers;
 import ph.com.guanzongroup.cas.po.services.PurchaseOrderModels;
+import ph.com.guanzongroup.cas.po.status.PurchaseOrderStaticData;
 import ph.com.guanzongroup.cas.poqt.services.QuotationControllers;
 import ph.com.guanzongroup.cas.po.status.POStatus;
 import ph.com.guanzongroup.cas.po.status.PurchaseOrderStatus;
@@ -46,6 +57,7 @@ import org.json.simple.parser.ParseException;
  * <li>attachments removable only while editable (PO-BR-037);</li>
  * <li>outstanding quantity, balance, overdue (PO-BR-024/026, PO-FR-017);</li>
  * <li>lists, status history and printing (PO-BR-020/029/038);</li>
+ * <li>queuing the email to the supplier when a PO is confirmed;</li>
  * <li>the bundle / promo information of a line (PO-BR-030).</li>
  * </ul>
  *
@@ -70,6 +82,21 @@ public class PurchaseOrderMP extends PurchaseOrder {
 
     /** cTranStat set by Finance when the PO is paid. */
     private static final String STATUS_PAID = "6";
+
+    /** Sender of the supplier email. */
+    private static final String MAIL_SENDER = "procurement@guanzongroup.com.ph";
+
+    // Supplier_Email.cRecpient. CHECK: these must match the codes in your database.
+    public static final String RECIPIENT_TO = "0";
+    public static final String RECIPIENT_CC = "1";
+    public static final String RECIPIENT_BCC = "2";
+
+    // Send_Mail_Master column sizes
+    private static final int MAIL_TO_LENGTH = 256;
+    private static final int MAIL_CC_LENGTH = 512;
+    /** Send_Mail_Master.cStatusxx of an email that is not sent yet. */
+    private static final String MAIL_PENDING = "0";
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("[^@\\s,;]+@[^@\\s,;]+\\.[^@\\s,;]+");
 
     /** Purchase orders loaded by getPurchaseOrder / getConfirmedPurchaseOrder. */
     private List<Model_PO_Master> paPOMaster = new ArrayList<>();
@@ -123,8 +150,20 @@ public class PurchaseOrderMP extends PurchaseOrder {
     @Override
     protected JSONObject processStatusChange(String fsStatus, String fsRemarks) throws Exception {
         JSONObject loJSON = SourceDocuments().save();
+        if (loJSON == null) {
+            return errorJSON("Unable to save the source documents of the purchase order.");
+        }
         if (!isSuccess(loJSON)) {
             return loJSON;
+        }
+
+        //the supplier email is saved in this same transaction: if it fails, the confirmation rolls back
+        if (PurchaseOrderStatus.CONFIRMED.equals(fsStatus)) {
+            loJSON = queueSupplierMail(true);
+            if (!isSuccess(loJSON)) {
+                return errorJSON("The purchase order was not confirmed. "
+                        + "The supplier email could not be queued: " + loJSON.get("message"));
+            }
         }
 
         switch (fsStatus) {
@@ -157,10 +196,28 @@ public class PurchaseOrderMP extends PurchaseOrder {
         return successJSON();
     }
 
-    /** A non-success result rolls the save back. */
+    /**
+     * Runs inside the save transaction of a new or updated PO. Any problem with the
+     * source documents (stock requests, quotations) is returned as an error, which
+     * rolls the whole save back: nothing is kept and the save does not proceed.
+     * A thrown exception is turned into an error result for the same reason.
+     */
     @Override
     protected JSONObject saveIndustryRecords() throws SQLException, CloneNotSupportedException, GuanzonException {
-        return SourceDocuments().save();
+        if (getEditMode() != EditMode.ADDNEW && getEditMode() != EditMode.UPDATE) {
+            return successJSON();
+        }
+
+        try {
+            JSONObject loJSON = SourceDocuments().save();
+            if (loJSON == null) {
+                return errorJSON("Unable to save the source documents of the purchase order.");
+            }
+            return loJSON;
+        } catch (SQLException | GuanzonException | CloneNotSupportedException | RuntimeException ex) {
+            LOG.log(Level.SEVERE, MiscUtil.getException(ex), ex);
+            return errorJSON("Unable to save the source documents: " + MiscUtil.getException(ex));
+        }
     }
 
     // =====================================================================
@@ -196,6 +253,12 @@ public class PurchaseOrderMP extends PurchaseOrder {
             return result(loJSON);
         }
 
+        //OpenTransaction clears the attachments, and the validator counts only the loaded ones
+        if (getTransactionAttachmentCount() == 0) {
+            loadAttachments();
+        }
+
+        //the supplier email is queued inside the confirmation transaction (processStatusChange)
         loJSON = super.ConfirmTransaction(remarks);
         refreshStatus();
         return result(loJSON);
@@ -504,6 +567,7 @@ public class PurchaseOrderMP extends PurchaseOrder {
         return false;
     }
 
+
     /** Changing the supplier after lines exist clears them. */
     @Override
     public JSONObject SearchSupplier(String value, boolean byCode) throws SQLException, GuanzonException {
@@ -517,6 +581,8 @@ public class PurchaseOrderMP extends PurchaseOrder {
         }
         return result(loJSON);
     }
+
+
 
     /** Changing the category after lines exist clears them. */
     @Override
@@ -786,21 +852,51 @@ public class PurchaseOrderMP extends PurchaseOrder {
 
     /** POs with the statuses in psTranStat (and their pending letters). */
     public JSONObject getPurchaseOrder(String fsSupplierID, String fsReferID, String fsTransactionNo) throws SQLException, GuanzonException {
-        return result(loadPurchaseOrders(fsSupplierID, fsReferID, psTranStat));
+        return result(loadPurchaseOrders(fsSupplierID, fsReferID, psTranStat, new ArrayList<String>()));
     }
 
     /** POs with the statuses in psTranStat, plus POs with approval pending. */
     public JSONObject getConfirmedPurchaseOrder(String fsSupplierID, String fsReferID) throws SQLException, GuanzonException {
-        return result(loadPurchaseOrders(fsSupplierID, fsReferID, PurchaseOrderStatus.APPROVED));
+        return result(loadPurchaseOrders(fsSupplierID, fsReferID, PurchaseOrderStatus.APPROVED, new ArrayList<String>()));
     }
 
-    private JSONObject loadPurchaseOrders(String fsSupplierID, String fsReferID, String fsPendingCodes) throws SQLException, GuanzonException {
-        String lsSQL = MiscUtil.addCondition(PurchaseOrderQueries.purchaseOrderList(), String.join(" AND ",
+    /**
+     * POs with the statuses in psTranStat for the landing screen. A blank
+     * filter adds no condition. The search matches transaction no., reference
+     * no. and supplier name; the dates are inclusive; the order type is the
+     * saved code (see ORDER_REGULAR ... ORDER_BULK).
+     */
+    public JSONObject getPurchaseOrder(String fsSearch, LocalDate fdFrom, LocalDate fdTo, String fsOrderType)
+            throws SQLException, GuanzonException {
+        List<String> laExtra = new ArrayList<>();
+        if (!isBlank(fsSearch)) {
+            String lsLike = SQLUtil.toSQL("%" + fsSearch.trim() + "%");
+            laExtra.add("(a.sTransNox LIKE " + lsLike
+                    + " OR a.sReferNox LIKE " + lsLike
+                    + " OR e.sCompnyNm LIKE " + lsLike + ")");
+        }
+        if (fdFrom != null) {
+            laExtra.add("DATE(a.dTransact) >= " + SQLUtil.toSQL(fdFrom.toString()));
+        }
+        if (fdTo != null) {
+            laExtra.add("DATE(a.dTransact) <= " + SQLUtil.toSQL(fdTo.toString()));
+        }
+        if (!isBlank(fsOrderType)) {
+            laExtra.add("a.cOrdrType = " + SQLUtil.toSQL(fsOrderType));
+        }
+        return result(loadPurchaseOrders("", "", psTranStat, laExtra));
+    }
+
+    private JSONObject loadPurchaseOrders(String fsSupplierID, String fsReferID, String fsPendingCodes,
+                                          List<String> faExtraConditions) throws SQLException, GuanzonException {
+        List<String> laConditions = new ArrayList<>(Arrays.asList(
                 "a.sIndstCdx = " + SQLUtil.toSQL(Master().getIndustryID()),
                 "a.sCompnyID = " + SQLUtil.toSQL(Master().getCompanyID()),
                 "a.sSupplier LIKE " + SQLUtil.toSQL("%" + fsSupplierID),
-                "a.sCategrCd = " + SQLUtil.toSQL(Master().getCategoryCode()),
+                "a.sCategrCd LIKE " + SQLUtil.toSQL("%" + Master().getCategoryCode()),
                 "a.sTransNox LIKE " + SQLUtil.toSQL("%" + fsReferID)));
+        laConditions.addAll(faExtraConditions);
+        String lsSQL = MiscUtil.addCondition(PurchaseOrderQueries.purchaseOrderList(), String.join(" AND ", laConditions));
         lsSQL += andIfAny(PurchaseOrderQueries.statusOrPending("a.cTranStat", psTranStat, fsPendingCodes));
         lsSQL += branchFilter("a.sBranchCd");
         //urgent orders first (PO-BR-036)
@@ -878,6 +974,317 @@ public class PurchaseOrderMP extends PurchaseOrder {
     }
 
     // =====================================================================
+    // Supplier email (Send_Mail_Master)
+    // =====================================================================
+    /** All email addresses (active and inactive) of the PO's supplier. */
+    public List<Model_Supplier_Email> getSupplierEmails() throws SQLException, GuanzonException {
+        String lsSupplier = supplierID();
+        List<Model_Supplier_Email> laList = new ArrayList<>();
+        if (lsSupplier.isEmpty()) {
+            return laList;
+        }
+
+        ResultSet loRS = poGRider.executeQuery(PurchaseOrderQueries.supplierEmails(lsSupplier));
+        if (loRS == null) {
+            throw new SQLException("Unable to read the supplier email addresses.");
+        }
+        List<String> laAddresses = new ArrayList<>();
+        Set<String> laSeen = new HashSet<>();
+        try {
+            while (loRS.next()) {
+                String lsAddress = loRS.getString("sEMailAdd");
+                if (!isBlank(lsAddress) && laSeen.add(lsAddress.trim().toLowerCase())) {
+                    laAddresses.add(lsAddress);
+                }
+            }
+        } finally {
+            MiscUtil.close(loRS);
+        }
+
+        for (String lsAddress : laAddresses) {
+            Model_Supplier_Email loEmail = new ParamModels(poGRider).SupplierEmail();
+            JSONObject loJSON = loEmail.openRecordByEmail(lsSupplier, lsAddress);
+            if (!isSuccess(loJSON)) {
+                throw new SQLException(String.valueOf(loJSON.get("message")));
+            }
+            laList.add(loEmail);
+        }
+        return laList;
+    }
+
+    /** Same rule as SupplierEmail.isEntryOkay: system administrators only. */
+    public boolean canMaintainSupplierEmails() {
+        return poGRider.getUserLevel() >= UserRight.SYSADMIN;
+    }
+
+    /** Saves a new email address of the PO's supplier through SupplierEmail. */
+    public JSONObject addSupplierEmail(String fsEmail, String fsContactPerson, String fsRecipientType)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        JSONObject loJSON = checkSupplierEmailEntry();
+        if (!isSuccess(loJSON)) {
+            return result(loJSON);
+        }
+        String lsEmail = fsEmail == null ? "" : fsEmail.trim();
+        if (lsEmail.isEmpty()) {
+            return result(errorJSON("Email address must not be empty."));
+        }
+
+        String lsSupplier = supplierID();
+        ResultSet loRS = poGRider.executeQuery(PurchaseOrderQueries.supplierEmail(lsSupplier, lsEmail));
+        if (loRS == null) {
+            return result(errorJSON("Query execution failed."));
+        }
+        try {
+            if (loRS.next()) {
+                return result(errorJSON(RecordStatus.ACTIVE.equals(loRS.getString("cRecdStat"))
+                        ? "This email address is already listed for the supplier."
+                        : "This email address is already listed but inactive. Activate it instead."));
+            }
+        } finally {
+            MiscUtil.close(loRS);
+        }
+
+        int lnEntryNo = 1;
+        loRS = poGRider.executeQuery(PurchaseOrderQueries.nextSupplierEmailEntry(lsSupplier));
+        if (loRS == null) {
+            return result(errorJSON("Query execution failed."));
+        }
+        try {
+            if (loRS.next()) {
+                lnEntryNo = loRS.getInt("nEntryNox");
+            }
+        } finally {
+            MiscUtil.close(loRS);
+        }
+
+        SupplierEmail loSupplierEmail = createSupplierEmail();
+        loJSON = loSupplierEmail.newRecord();
+        if (!isSuccess(loJSON)) {
+            return result(loJSON);
+        }
+        Model_Supplier_Email loModel = loSupplierEmail.getModel();
+        loModel.setClientId(lsSupplier);
+        loModel.setIndustryCode(Master().getIndustryID());
+        loModel.setCategoryCode(Master().getCategoryCode());
+        loModel.setEmailAddress(lsEmail);
+        loModel.setEntryNo(lnEntryNo);
+        loModel.setContactPerson(fsContactPerson == null ? "" : fsContactPerson.trim());
+        loModel.setRecipientType(fsRecipientType);
+        loModel.setRecordStatus(RecordStatus.ACTIVE);
+
+        loJSON = loSupplierEmail.saveRecord();
+        if (!isSuccess(loJSON)) {
+            return result(loJSON);
+        }
+        return result(successJSON("The email address was added."));
+    }
+
+    /** Activates or deactivates one email address of the PO's supplier. */
+    public JSONObject setSupplierEmailStatus(String fsEmail, boolean fbActive)
+            throws SQLException, GuanzonException {
+        JSONObject loJSON = checkSupplierEmailEntry();
+        if (!isSuccess(loJSON)) {
+            return result(loJSON);
+        }
+
+        String lsSupplier = supplierID();
+        String lsSQL = PurchaseOrderQueries.updateSupplierEmailStatus(lsSupplier, fsEmail,
+                fbActive ? RecordStatus.ACTIVE : RecordStatus.INACTIVE,
+                poGRider.getUserID(), poGRider.getServerDate());
+
+        loJSON = inTransaction("Supplier Email Status", true, () -> {
+            //CHECK: use the same executeQuery form as your other updates
+            if (poGRider.executeQuery(lsSQL, "Supplier_Email", poGRider.getBranchCode(), "", "") <= 0) {
+                return errorJSON("Unable to update the email address.");
+            }
+            return successJSON(fbActive ? "The email address was activated."
+                    : "The email address was deactivated.");
+        });
+        if (isSuccess(loJSON)) {
+            ReferenceCache.invalidate("Supplier_Email", lsSupplier);
+        }
+        return result(loJSON);
+    }
+
+    private JSONObject checkSupplierEmailEntry() {
+        if (getEditMode() != EditMode.ADDNEW && getEditMode() != EditMode.UPDATE) {
+            return errorJSON("Supplier emails can be changed only while adding or updating a purchase order.");
+        }
+//        if (!canMaintainSupplierEmails()) {
+//            return errorJSON("Only a system administrator can maintain supplier email addresses.");
+//        }
+        if (supplierID().isEmpty()) {
+            return errorJSON("The purchase order has no supplier.");
+        }
+        return successJSON();
+    }
+
+    private String supplierID() {
+        Object loSupplier = Master().getValue("sSupplier");
+        return loSupplier == null ? "" : loSupplier.toString().trim();
+    }
+
+    protected SupplierEmail createSupplierEmail() throws SQLException, GuanzonException {
+        SupplierEmail loSupplierEmail = new SupplierEmail();
+        loSupplierEmail.setApplicationDriver(poGRider);
+        loSupplierEmail.setWithParentClass(false);
+        loSupplierEmail.setLogWrapper(logwrapr);
+        loSupplierEmail.initialize();
+        return loSupplierEmail;
+    }
+
+    /**
+     * Saves the Send_Mail_Master record of a confirmed PO with the supplier's
+     * active email addresses, each by Supplier_Email.cRecpient:
+     * 0 = To (sMailToxx), 1 = CC (sMailCCxx), 2 = BCC (sMailBCCx).
+     * A record that is still pending (e.g. the PO was returned and confirmed
+     * again) is updated.
+     */
+    public JSONObject queueSupplierMail() throws SQLException, GuanzonException, CloneNotSupportedException {
+        return queueSupplierMail(false);
+    }
+
+    /**
+     * @param fbInStatusTransaction true when called inside the status-change
+     * transaction (Confirm): the status is not saved yet, so it is not checked,
+     * and the email record is saved without its own transaction so that an error
+     * rolls back the whole confirmation.
+     */
+    private JSONObject queueSupplierMail(boolean fbInStatusTransaction)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        if (!fbInStatusTransaction
+                && !Arrays.asList(PurchaseOrderStatus.CONFIRMED, PurchaseOrderStatus.APPROVED,
+                PurchaseOrderStatus.POSTED, STATUS_PAID).contains(Master().getTransactionStatus())) {
+            return result(errorJSON("Only confirmed purchase orders can be emailed."));
+        }
+
+        List<String> laTo = new ArrayList<>();
+        List<String> laCC = new ArrayList<>();
+        List<String> laBCC = new ArrayList<>();
+        for (Model_Supplier_Email loEmail : getSupplierEmails()) {
+            if (!RecordStatus.ACTIVE.equals(loEmail.getRecordStatus())) {
+                continue;
+            }
+            String lsAddress = loEmail.getEmailAddress().trim();
+            String lsType = loEmail.getRecipientType();
+            if (RECIPIENT_TO.equals(lsType)) {
+                laTo.add(lsAddress);
+            } else if (RECIPIENT_CC.equals(lsType)) {
+                laCC.add(lsAddress);
+            } else if (RECIPIENT_BCC.equals(lsType)) {
+                laBCC.add(lsAddress);
+            }
+        }
+        if (laTo.isEmpty()) {
+            return result(errorJSON("The supplier has no active \"To\" email address."));
+        }
+        return saveMailRecord(laTo, laCC, laBCC, fbInStatusTransaction);
+    }
+
+    /** Creates or updates the PO's email record; a processed one is not changed. */
+    private JSONObject saveMailRecord(List<String> faTo, List<String> faCC, List<String> faBCC,
+                                      boolean fbInStatusTransaction)
+            throws SQLException, GuanzonException, CloneNotSupportedException {
+        if (isBlank(getMailSender())) {
+            return result(errorJSON("The sender email address is not set."));
+        }
+
+        List<String> laAll = new ArrayList<>(faTo);
+        laAll.addAll(faCC);
+        laAll.addAll(faBCC);
+        for (String lsAddress : laAll) {
+            if (!EMAIL_PATTERN.matcher(lsAddress).matches()) {
+                return result(errorJSON("Invalid email address: " + lsAddress));
+            }
+        }
+
+        //several addresses are separated by ";" with no space
+        String lsTo = String.join(";", faTo);
+        String lsCC = String.join(";", faCC);
+        String lsBCC = String.join(";", faBCC);
+        if (lsTo.length() > MAIL_TO_LENGTH
+                || lsCC.length() > MAIL_CC_LENGTH || lsBCC.length() > MAIL_CC_LENGTH) {
+            return result(errorJSON("The supplier has too many email addresses for one email."));
+        }
+
+        //the PO form is exported to PDF first; its file name goes to sAttached
+        JSONObject loExport = PdfExporter().export(getMailPdfFormat());
+        if (!isSuccess(loExport)) {
+            return result(loExport);
+        }
+        String lsAttachment = (String) loExport.get("fileName");
+
+        String lsMailNo = savedMailNo();
+        SendMailMaster loMail = createSendMailMaster(); //starts as a new record
+        if (loMail == null) {
+            return result(errorJSON("Unable to create the email record."));
+        }
+        //true: join the caller's transaction (no begin/commit of its own), so a failure rolls everything back
+        loMail.setWithParentClass(fbInStatusTransaction);
+
+        if (!lsMailNo.isEmpty()) {
+            JSONObject loJSON = loMail.openRecord(lsMailNo);
+            if (!isSuccess(loJSON)) {
+                return result(loJSON);
+            }
+            if (!MAIL_PENDING.equals(loMail.getModel().getTransactionStatus())) {
+                return result(errorJSON("The email was already processed and cannot be changed."));
+            }
+            loJSON = loMail.updateRecord();
+            if (!isSuccess(loJSON)) {
+                return result(loJSON);
+            }
+        }
+
+        Model_Send_Mail_Master loModel = loMail.getModel();
+        loModel.setTransactionDate(poGRider.getServerDate());
+        loModel.setMailFrom(getMailSender());
+        loModel.setMailTo(lsTo);
+        loModel.setMailCC(lsCC);
+        loModel.setMailBCC(lsBCC);
+        loModel.setSubject("PURCHASE ORDER - " + Master().getTransactionNo());
+        loModel.setMailBody(mailBody());
+        loModel.setAttachment(lsAttachment);          //sAttached, e.g. C0A926001035.pdf
+        loModel.setSourceCode(getSourceCode());
+        loModel.setSourceNo(Master().getTransactionNo());
+        loModel.setTransactionStatus(MAIL_PENDING);   //cStatusxx = '0', not sent yet
+        loModel.setPostedDate(null);                  //not posted yet; '' is not a valid datetime
+
+        JSONObject loJSON = loMail.saveRecord();
+        if (!isSuccess(loJSON)) {
+            return result(loJSON);
+        }
+        return result(successJSON("The email to the supplier was queued."));
+    }
+    /** Transaction number of the PO's email record; empty when there is none. */
+    private String savedMailNo() throws SQLException {
+        ResultSet loRS = poGRider.executeQuery(
+                PurchaseOrderQueries.queuedMail(getSourceCode(), Master().getTransactionNo()));
+        if (loRS == null) {
+            throw new SQLException("Unable to check the email record.");
+        }
+        try {
+            return loRS.next() ? loRS.getString("sTransNox") : "";
+        } finally {
+            MiscUtil.close(loRS);
+        }
+    }
+
+    /** Sender address of the supplier email. */
+    protected String getMailSender() {
+        return MAIL_SENDER;
+    }
+
+    /** Body of the supplier email (Send_Mail_Master.sMailBody, up to 1024 characters). */
+    protected String mailBody() {
+        Object loDate = Master().getValue("dTransact");
+        String lsDate = loDate instanceof java.util.Date
+                ? " dated " + new SimpleDateFormat("MMMM d, yyyy").format((java.util.Date) loDate)
+                : "";
+        return "Please see attached file...";
+    }
+
+    // =====================================================================
     // Helpers: override a create... method to give an industry its own version
     // =====================================================================
     protected PurchaseOrderSourceDocuments createSourceDocuments() {
@@ -889,6 +1296,30 @@ public class PurchaseOrderMP extends PurchaseOrder {
 
     protected PurchaseOrderPrinter createPrinter() {
         return new PurchaseOrderPrinter(this, poGRider, Audit());
+    }
+
+    private PurchaseOrderPdfExporter poPdfExporter;
+
+    /** The PDF layouts this industry can export; add its own with register(...). */
+    protected PurchaseOrderPdfExporter createPdfExporter() {
+        return new PurchaseOrderPdfExporter(this, poGRider, Audit());
+    }
+
+    public PurchaseOrderPdfExporter PdfExporter() {
+        if (poPdfExporter == null) {
+            poPdfExporter = createPdfExporter();
+        }
+        return poPdfExporter;
+    }
+
+    /** PDF layout attached to the supplier email. */
+    protected String getMailPdfFormat() {
+        return PurchaseOrderStaticData.Printing_CAR_MC_MPUnit_Appliance;
+    }
+
+    /** A new email record each call (a new factory, so nothing is reused). */
+    protected SendMailMaster createSendMailMaster() throws SQLException, GuanzonException {
+        return new PurchaseOrderControllers(poGRider, logwrapr).SendMailMaster();
     }
 
     public PurchaseOrderSourceDocuments SourceDocuments() {
@@ -921,32 +1352,4 @@ public class PurchaseOrderMP extends PurchaseOrder {
         return new java.sql.Date(fdDate.getTime()).toLocalDate();
     }
 
-    // =====================================================================
-    // Bundle / promo information (Mobile Phone only)
-    // =====================================================================
-    /**
-     * Sets the bundle / promo information of a line. Optional; it does not
-     * change the item master. An empty value clears it.
-     */
-    public JSONObject setAdditionalInfo(int row, String value) {
-        JSONObject loJSON = checkEntryMode();
-        if (!isSuccess(loJSON)) {
-            return result(loJSON);
-        }
-        if (row < 0 || row >= getDetailCount()) {
-            return result(errorJSON("Invalid row number."));
-        }
-        if (isBlank(Detail(row).getStockID())) {
-            return result(errorJSON("Select an item before entering additional information."));
-        }
-
-        Detail(row).setValue(ADDITIONAL_INFO, value == null ? "" : value.trim());
-        return result(successJSON());
-    }
-
-    /** Bundle / promo information of a line; empty when none. */
-    public String getAdditionalInfo(int row) {
-        Object loValue = Detail(row).getValue(ADDITIONAL_INFO);
-        return loValue == null ? "" : loValue.toString();
-    }
 }
